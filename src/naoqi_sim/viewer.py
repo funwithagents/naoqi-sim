@@ -5,8 +5,10 @@ it. Closing the window stops the viewer only: the robot keeps running, and this 
 """
 
 import logging
+import math
 import threading
-from typing import Any
+from collections.abc import Callable, Sequence
+from typing import Any, Literal
 
 from naoqi_sim.config import ConfigError, NaoqiSimConfig, ViewerSettings
 from naoqi_sim.errors import MissingExtraError
@@ -38,6 +40,7 @@ def viewer_config(settings: ViewerSettings, url: str) -> Any:
             mode="sim",
             headless=settings.headless,
             cameras_display=settings.cameras_display,
+            people_display=settings.people_display,
             naoqi=naoqi_viewer.NaoqiSettings(url=url),
             world=naoqi_viewer.WorldSettings(
                 scene=settings.scene,
@@ -51,6 +54,87 @@ def viewer_config(settings: ViewerSettings, url: str) -> Any:
         ) from None
 
 
+Frame = Literal["world", "robot"]
+FRAMES: tuple[Frame, ...] = ("world", "robot")
+
+
+def robot_to_world(
+    robot: Sequence[float], pos: Sequence[float], quat: Sequence[float] | None
+) -> tuple[tuple[float, float, float], tuple[float, float, float, float] | None]:
+    """`pos` and `quat` given in NAOqi's FRAME_ROBOT, in FRAME_WORLD, for the robot at `robot`:
+    `[x, y, theta]`, what `ALMotion.getRobotPosition(True)` answers."""
+    x, y, theta = (float(v) for v in robot)
+    px, py, pz = (float(v) for v in pos)
+    c, s = math.cos(theta), math.sin(theta)
+    world_pos = (x + c * px - s * py, y + s * px + c * py, pz)
+    if quat is None:
+        return world_pos, None
+    w, qx, qy, qz = (float(v) for v in quat)
+    hw, hz = math.cos(theta / 2), math.sin(theta / 2)  # the heading, about the vertical
+    world_quat = (
+        hw * w - hz * qz,
+        hw * qx - hz * qy,
+        hw * qy + hz * qx,
+        hw * qz + hz * w,
+    )
+    return world_pos, world_quat
+
+
+class SimProps:
+    """naoqi-viewer's props, one call per viewer call, with positions in the scene's frame
+    (`frame="world"`, NAOqi's FRAME_WORLD) or the robot's (`frame="robot"`, FRAME_ROBOT, read
+    from `ALMotion.getRobotPosition` at the call) (specs/host/props.md)."""
+
+    def __init__(self, props: Any, robot_position: Callable[[], Sequence[float]]):
+        self._props = props
+        self._robot_position = robot_position
+
+    def list(self) -> dict[str, Any]:
+        return self._props.list()
+
+    def spawn(
+        self,
+        kind: str,
+        pos: Sequence[float],
+        *,
+        frame: Frame = "world",
+        quat: Sequence[float] | None = None,
+        **options: Any,
+    ) -> Any:
+        pos, quat = self._to_world(frame, pos, quat)
+        return self._props.spawn(kind, pos, quat=quat, **options)
+
+    def place(
+        self,
+        name: str,
+        pos: Sequence[float] | None = None,
+        quat: Sequence[float] | None = None,
+        *,
+        frame: Frame = "world",
+        duration: float = 0.0,
+    ) -> Any:
+        if pos is not None:
+            pos, quat = self._to_world(frame, pos, quat)
+        elif quat is not None and frame == "robot":
+            _, quat = robot_to_world(self._robot_position(), (0, 0, 0), quat)
+        return self._props.place(name, pos, quat, duration=duration)
+
+    def despawn(self, name: str) -> Any:
+        return self._props.despawn(name)
+
+    def clear(self) -> dict[str, Any]:
+        return self._props.clear()
+
+    def _to_world(
+        self, frame: Frame, pos: Sequence[float], quat: Sequence[float] | None
+    ) -> tuple[Any, Any]:
+        if frame not in FRAMES:
+            raise ValueError(f"frame must be 'world' or 'robot', got {frame!r}")
+        if frame == "world":
+            return pos, quat
+        return robot_to_world(self._robot_position(), pos, quat)
+
+
 class SimWorld:
     """One `NaoqiViewer` in sim mode, owned by a running `NaoqiSim`."""
 
@@ -60,6 +144,9 @@ class SimWorld:
         self._viewer = NaoqiViewer(config)
         self._closing = False
         self._watcher: threading.Thread | None = None
+        self._session: Any = None  # for the robot's frame, opened at its first use
+        self._session_lock = threading.Lock()
+        self.props = SimProps(self._viewer.props, self._robot_position)
 
     @property
     def running(self) -> bool:
@@ -90,8 +177,20 @@ class SimWorld:
         except ViewerClosed:
             raise WorldClosed("the viewer is closed") from None
 
+    def _robot_position(self) -> Sequence[float]:
+        from naoqi_sim import stack
+
+        with self._session_lock:
+            if self._session is None:
+                self._session = stack.connect()  # naoqi-sim's NAOqi, on its fixed URL
+            return self._session.service("ALMotion").getRobotPosition(True)
+
     def close(self) -> None:
         self._closing = True
+        with self._session_lock:
+            session, self._session = self._session, None
+        if session is not None:
+            session.close()
         self._viewer.close()
         if self._watcher is not None:
             self._watcher.join(timeout=5)

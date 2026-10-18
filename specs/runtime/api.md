@@ -116,6 +116,7 @@ So `start()` only checks: an image missing or not verified raises `ImagesMissing
 | `url` | `str` | `tcp://127.0.0.1:9559`, the address any qi client connects to |
 | `await status()` | `NaoqiSimStatus` | Read from the `NaoqiSim` service over qi, in one connect attempt (libqi 3.1.8 fixed the failed connects 3.1.6 needed retries for): `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
 | `fake_audio` | `FakeAudioSource` | The fake audio source a test plays sounds through ([audio-input.md](../host/audio-input.md), "The fake source"); `NotRunningError` when not running, `NaoqiSimError` when `audio_input.source` is not `fake` |
+| `props` | naoqi-viewer's `PropsClient`, wrapped | The props of the simulated world a test spawns, places and despawns, with the robot's frame added ([props.md](../host/props.md)); `NotRunningError` when not running, `NaoqiSimError` when the config runs no viewer |
 | `config` | `NaoqiSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |
 
@@ -149,7 +150,7 @@ The `NaoqiSim` *class* (`naoqi_sim.NaoqiSim`, on the host) keeps the name of the
 
 ### Front door
 
-`from naoqi_sim import NaoqiSim` re-exports what a caller needs: `NaoqiSim`, `NaoqiSimStatus`, `fetch_and_build_images`, `read_status` and `StackStatus`, `cleanup`, the config classes (`NaoqiSimConfig` and its blocks, the `Literal` types), the audio sinks (`AudioSink`, `DevicePlayer`, `NullSink`, `WavSink`, `MemorySink`), `ConfigError` and the errors above. Library modules only use `logging.getLogger(__name__)`; `logging.basicConfig` belongs to the CLI.
+`from naoqi_sim import NaoqiSim` re-exports what a caller needs: `NaoqiSim`, `NaoqiSimStatus`, `fetch_and_build_images`, `read_status` and `StackStatus`, `cleanup`, the config classes (`NaoqiSimConfig` and its blocks, the `Literal` types), the audio sinks (`AudioSink`, `DevicePlayer`, `NullSink`, `WavSink`, `MemorySink`), `ConfigError` and the errors above; and, lazily, naoqi-viewer's `PropState` and `PropError` for the callers of `sim.props` ([props.md](../host/props.md)), which need the `viewer` extra. Library modules only use `logging.getLogger(__name__)`; `logging.basicConfig` belongs to the CLI.
 
 ### One naoqi-sim per machine
 
