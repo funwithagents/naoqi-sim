@@ -95,7 +95,7 @@ def test_run_starts_until_ctrl_c_then_stops(signals, stand_in, tmp_path, capsys)
     assert naoqisim.config.naoqi.version == "2.8" and naoqisim.config.viewer.headless
     assert naoqisim.events == ["start", "ready", "stop"]
     assert (
-        "naoqi-sim 0.0.1 on NAOqi 2.8.7.4 ready at tcp://127.0.0.1:9559"
+        "NAOqi 2.8 (sim): NAOqi 2.8.7.4 ready at tcp://127.0.0.1:9559 (Ctrl-C to stop)"
         in capsys.readouterr().out
     )
 

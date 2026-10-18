@@ -3,7 +3,8 @@
 The fake keeps its state in a JSON file: the images (ID and labels, set by `compose build` from
 the environment's `NAOQI_SIM_VERSION` and `NAOQI_SIM_RECIPES`, the same ID for the same inputs, as
 Docker's cache), the containers and how the NAOqi one boots (`boot`: healthy, starting,
-unhealthy, exited), whether the tts engine answers, and whether Docker is up or a build fails.
+unhealthy, exited) with the log it prints as it boots (`boot_log`: one more line each time
+`docker logs` reads it, the container `starting` until all are out), whether the tts engine answers, and whether Docker is up or a build fails.
 Every invocation is logged, and `up` records the `NAOQI_SIM_TTS_ENGINE` it was given. A NAOqi build
 reads its `image-data` context as compose does, from `$NAOQI_SIM_IMAGE_DATA/<version>`: it records the
 folder, and fails as BuildKit does when the folder is not there.
@@ -99,6 +100,8 @@ FAKE_DOCKER = textwrap.dedent(
         status = state["containers"].get(args[-1])
         if status is None:
             done(1)
+        if state.get("log_shown", 0) < len(state.get("boot_log", [])):
+            status = "starting"  # booting until its whole log is out
         print({"healthy": "running healthy", "starting": "running starting",
                "unhealthy": "running unhealthy", "exited": "exited ",
                "running": "running "}[status])
@@ -106,7 +109,13 @@ FAKE_DOCKER = textwrap.dedent(
     if args[0] == "exec":
         done(0 if state.get("tts_answers", True) else 1)
     if args[0] == "logs":
-        print("[entrypoint] fake log line")
+        if "boot_log" in state:
+            # One more line each time it is read: the entrypoint's on stdout, NAOqi's on stderr.
+            state["log_shown"] = min(state.get("log_shown", 0) + 1, len(state["boot_log"]))
+            for line in state["boot_log"][:state["log_shown"]]:
+                print(line, file=sys.stdout if line.startswith("[entrypoint]") else sys.stderr)
+        else:
+            print("[entrypoint] fake log line")
         done()
     done(2)
     """

@@ -3,6 +3,7 @@ the fake `docker` first on PATH (tests/fake_docker.py)."""
 
 import asyncio
 import hashlib
+import logging
 import socket
 from pathlib import Path
 
@@ -119,6 +120,42 @@ def test_a_container_that_never_turns_healthy_times_out(
     with pytest.raises(BootError, match="not healthy after"):
         build("2.1", image_data=image_data)
     assert docker.read()["containers"] == {}
+
+
+def info_and_debug(caplog) -> tuple[list[str], list[str]]:
+    return (
+        [r.getMessage() for r in caplog.records if r.levelno == logging.INFO],
+        [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG],
+    )
+
+
+def test_the_boot_wait_relays_what_a_slow_boot_waits_for(docker, caplog):
+    docker.set(
+        containers={IMAGES["2.8"].container: "healthy"},
+        boot_log=[
+            "[entrypoint] still waiting for: ALDialog (poll 10)",
+            "[W] qitype.signal: NAOqi's own output",
+            "[entrypoint] still waiting: the service list is still changing (poll 20)",
+            "[entrypoint] NAOqi ready after 24 polls, 80 services",
+            "[entrypoint] naoqi-sim ready",
+        ],
+    )
+    with caplog.at_level(logging.DEBUG, logger="naoqi_sim"):
+        docker_images.wait_healthy(IMAGES["2.8"], timeout=5)
+
+    info, debug = info_and_debug(caplog)
+    # Each line once, in order, as the log grew poll after poll; the rest for --verbose.
+    assert info == [
+        "NAOqi 2.8 (sim): containers up, waiting for NAOqi to start (up to 5 s)",
+        "NAOqi 2.8 (sim): still waiting for: ALDialog (poll 10)",
+        "NAOqi 2.8 (sim): still waiting: the service list is still changing (poll 20)",
+        "NAOqi 2.8 (sim): NAOqi started",
+    ]
+    assert debug == [
+        "NAOqi 2.8 (sim) | [W] qitype.signal: NAOqi's own output",
+        "NAOqi 2.8 (sim) | [entrypoint] NAOqi ready after 24 polls, 80 services",
+        "NAOqi 2.8 (sim) | [entrypoint] naoqi-sim ready",
+    ]
 
 
 def test_a_silent_tts_engine_fails_the_verification(docker, image_data, monkeypatch):

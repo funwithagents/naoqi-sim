@@ -78,6 +78,11 @@ IMAGES = {
 }
 
 
+def label(version: str) -> str:
+    """What every line naoqi-sim logs or prints about a version's simulated NAO starts with."""
+    return f"NAOqi {version} (sim)"
+
+
 def naoqi_sim_version() -> str:
     """The installed naoqi-sim version, built into the images and checked at start."""
     return importlib.metadata.version("naoqi-sim")
@@ -208,13 +213,44 @@ def container_logs(container: str) -> str:
     return (res.stdout + res.stderr).strip()
 
 
+class _BootLog:
+    """The NAOqi container's log as it boots: the entrypoint's `still waiting` lines at INFO,
+    which name what a slow boot waits for, the rest at DEBUG. Reads the whole log each time and
+    counts the lines already relayed."""
+
+    def __init__(self, images: Images):
+        self._prefix = label(images.version)
+        self._container = images.container
+        self._seen = [0, 0]  # stdout, stderr lines already relayed
+
+    def relay(self) -> None:
+        res = run("docker", "logs", self._container)
+        if res.returncode != 0:
+            return
+        for i, text in enumerate((res.stdout, res.stderr)):
+            lines = text.splitlines()
+            for line in lines[self._seen[i] :]:
+                said = line.removeprefix("[entrypoint] ")
+                if said != line and said.startswith("still waiting"):
+                    log.info("%s: %s", self._prefix, said)
+                elif line.strip():
+                    log.debug("%s | %s", self._prefix, line)
+            self._seen[i] = len(lines)
+
+
 def wait_healthy(
     images: Images, timeout: float | None = None, abort: threading.Event | None = None
 ) -> None:
     """Until the version's NAOqi container is healthy; `BootError` if it exits, turns
     unhealthy or takes longer than `timeout` (default `READY_TIMEOUT`), with the end of its log,
-    or as soon as `abort` is set."""
+    or as soon as `abort` is set. Relays the container's log as it grows."""
     timeout = READY_TIMEOUT if timeout is None else timeout
+    log.info(
+        "%s: containers up, waiting for NAOqi to start (up to %.0f s)",
+        label(images.version),
+        timeout,
+    )
+    boot_log = _BootLog(images)
     end = time.monotonic() + timeout
     while True:
         res = run(
@@ -226,6 +262,8 @@ def wait_healthy(
         )
         state = res.stdout.split() if res.returncode == 0 else ["missing"]
         if state == ["running", "healthy"]:
+            boot_log.relay()
+            log.info("%s: NAOqi started", label(images.version))
             return
         if state[0] != "running" or state[1:] == ["unhealthy"]:
             raise BootError(
@@ -237,6 +275,7 @@ def wait_healthy(
                 f"NAOqi {images.version} not healthy after {timeout:.0f} s:\n"
                 + container_logs(images.container)
             )
+        boot_log.relay()
         if abort is not None and abort.wait(POLL):
             raise BootError(f"waiting for NAOqi {images.version} was cancelled")
         if abort is None:
@@ -257,7 +296,7 @@ def _wait_tts() -> None:
 
 
 def _build(images: Images, env: dict[str, str]) -> None:
-    log.info("NAOqi %s: building %s and %s", images.version, images.image, TTS_IMAGE)
+    log.info("%s: building %s and %s", label(images.version), images.image, TTS_IMAGE)
     res = run(*images.compose(), "build", "tts", images.service, timeout=3600, env=env)
     if res.returncode != 0:
         raise ImageBuildError(
@@ -267,7 +306,7 @@ def _build(images: Images, env: dict[str, str]) -> None:
 
 
 def _verify(images: Images, env: dict[str, str]) -> None:
-    log.info("NAOqi %s: verifying the images boot", images.version)
+    log.info("%s: verifying the images boot", label(images.version))
     require_free(NAOQI_PORT)
     try:
         res = run(*images.compose(), "up", "-d", "tts", images.service, env=env)
@@ -302,7 +341,7 @@ def _fetch_build_verify(images: Images, image_data: Path) -> None:
             raise ImagesMissingError(f"{tag} disappeared: {_command(images.version)}")
         verified[tag] = found.id
     _record(image_data, verified)
-    log.info("NAOqi %s: images built and verified", images.version)
+    log.info("%s: images built and verified", label(images.version))
 
 
 async def fetch_and_build_images(

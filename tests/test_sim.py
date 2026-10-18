@@ -5,6 +5,7 @@ image check and naoqi-viewer are replaced, each by a recorder."""
 
 import asyncio
 import json
+import logging
 import socket
 import time
 import wave
@@ -420,6 +421,46 @@ def test_the_fake_audio_input_serves_the_link_from_boot_to_stop(env, monkeypatch
     assert not listening(sim.HOST_LINK_PORT)
 
 
+def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
+    config = NaoqiSimConfig(
+        viewer=HEADLESS,
+        video_input=VideoInputSettings(top=CameraSettings(source="render")),
+        audio_input=AudioInputSettings(source="fake", mono="silence"),
+    )
+    naoqisim = sim.NaoqiSim(config, sink=MemorySink())
+    with caplog.at_level(logging.INFO, logger="naoqi_sim"):
+        asyncio.run(naoqisim.start())
+        started = len(caplog.records)
+        asyncio.run(naoqisim.stop())
+
+    def said(records) -> list[str]:
+        return [r.getMessage() for r in records if r.levelno == logging.INFO]
+
+    assert said(caplog.records[:started]) == [
+        "NAOqi 2.1 (sim): starting",
+        "NAOqi 2.1 (sim): checking Docker, the images and the ports",
+        "NAOqi 2.1 (sim): starting the audio output (MemorySink)",
+        f"NAOqi 2.1 (sim): opening the host link on port {sim.HOST_LINK_PORT}",
+        "NAOqi 2.1 (sim): starting the containers (tts, naoqi21)",
+        "NAOqi 2.1 (sim): containers up, waiting for NAOqi to start (up to 240 s)",
+        "NAOqi 2.1 (sim): NAOqi started",
+        "NAOqi 2.1 (sim): starting naoqi-viewer (headless)",
+        "NAOqi 2.1 (sim): starting the video input (top from render)",
+        "NAOqi 2.1 (sim): starting the audio input (fake source)",
+    ]
+    # Newest first, so the containers' `down` is seen coming.
+    assert said(caplog.records[started:]) == [
+        "NAOqi 2.1 (sim): stopping",
+        "NAOqi 2.1 (sim): stopping the audio input",
+        "NAOqi 2.1 (sim): stopping the video input",
+        "NAOqi 2.1 (sim): stopping the viewer",
+        "NAOqi 2.1 (sim): stopping the containers",
+        "NAOqi 2.1 (sim): stopping the host link",
+        "NAOqi 2.1 (sim): stopping the audio output",
+        "NAOqi 2.1 (sim): NAOqi stopped",
+    ]
+
+
 def test_fake_audio_needs_the_fake_source(env):
     naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
     asyncio.run(naoqisim.start())
@@ -509,7 +550,7 @@ def test_start_twice_is_an_error(env):
     asyncio.run(run())
 
 
-def test_stop_carries_on_through_a_failure_and_raises_it(env, monkeypatch):
+def test_stop_carries_on_through_a_failure_and_raises_it(env, monkeypatch, caplog):
     naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
     asyncio.run(naoqisim.start())
 
@@ -517,10 +558,14 @@ def test_stop_carries_on_through_a_failure_and_raises_it(env, monkeypatch):
         raise NaoqiSimError("docker compose down failed")
 
     monkeypatch.setattr(sim.stack, "down", down_fails)
-    with pytest.raises(NaoqiSimError, match="down failed"):
+    with (
+        caplog.at_level(logging.INFO, logger="naoqi_sim"),
+        pytest.raises(NaoqiSimError, match="down failed"),
+    ):
         asyncio.run(naoqisim.stop())
     assert not naoqisim.running
     assert not listening(sim.AUDIO_OUTPUT_PORT)  # the audio output stopped anyway
+    assert "NAOqi 2.1 (sim): NAOqi stopped" not in caplog.messages  # it may not have
 
 
 def test_record_mode_writes_the_audio_to_a_wav_file(env, tmp_path):
