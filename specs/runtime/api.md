@@ -74,6 +74,16 @@ If any step fails, everything already started is stopped, in reverse order, and 
 
 **`async with NaoqiSim(...) as sim:`** runs `start()` then `stop()` on every way out.
 
+### Progress
+
+A start takes from a few seconds to a minute, most of it in the readiness wait. It logs what it is doing, so a person watching `naoqi-sim run` (or a caller that shows the library's logs) can see it advance and tell where it stalls. Everything goes through `logging.getLogger(__name__)`, at INFO unless said otherwise:
+
+- **`starting`, then each step of `start()` as it begins**: the checks, a webcam being opened (on macOS, with a hint that the system may ask for the camera permission, which otherwise looks like a hang), the audio output and its sink, the containers with their services, the wait for NAOqi to start inside its container (the containers are up by then; it says its timeout) and `NAOqi started` once it is, the viewer (window or headless), the video input with each camera's source, the audio input with its source. No timings: the caller's ready line marks the end.
+- **The readiness wait** (`wait_healthy`, shared with the verification of `fetch_and_build_images`) relays the NAOqi container's log as it grows: the entrypoint's `still waiting …` lines at INFO, which a slow boot prints every 10 s naming what it waits for ([status-service.md](../container/status-service.md), "Readiness"), and everything else at DEBUG (the entrypoint's other lines, NAOqi's own output). A boot that goes well adds nothing between the wait and `NAOqi started`. It reads the log with one `docker logs` per poll, keeping count of the lines already relayed; it changes nothing in the containers, so no rebuild is needed.
+- **`stopping`** (`stop()`), then each step the teardown undoes, newest first (a failed or cancelled start too), so a `compose down` that takes seconds is visible, and `NAOqi stopped` once every step is undone (a `stop()` that fails raises instead).
+
+Every line starts with `NAOqi <version> (sim): ` (`docker_images.label`), as do those of `fetch_and_build_images` and the lines `naoqi-sim run` prints itself ([cli.md](cli.md)). The ready line belongs to the caller: `naoqi-sim run` prints its own.
+
 ### Images: `fetch_and_build_images`
 
 Everything slow or downloaded happens once, before any start, in `await fetch_and_build_images(versions=None)` (CLI: `naoqi-sim fetch-and-build-images [2.1] [2.8]`, [cli.md](cli.md)); with no versions, both. For each version, in order:

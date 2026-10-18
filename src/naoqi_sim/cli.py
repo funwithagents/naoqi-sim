@@ -114,6 +114,7 @@ def _route_signals(
 async def _run(sim: NaoqiSim) -> int:
     """Start, wait for Ctrl-C or SIGTERM, stop. A signal during the start cancels it."""
     loop = asyncio.get_running_loop()
+    label = docker_images.label(sim.config.naoqi.version)
     stop = asyncio.Event()
     starting = asyncio.create_task(sim.start())
 
@@ -128,16 +129,14 @@ async def _run(sim: NaoqiSim) -> int:
         try:
             await starting
         except asyncio.CancelledError:
-            print("start cancelled", file=sys.stderr)
+            print(f"{label}: start cancelled", file=sys.stderr)
             return 130
         status = await sim.status()
         print(
-            f"naoqi-sim {status.version} on NAOqi {status.naoqi_version} ready at {sim.url} "
-            "(Ctrl-C to stop)",
+            f"{label}: NAOqi {status.naoqi_version} ready at {sim.url} (Ctrl-C to stop)",
             flush=True,
         )
         await stop.wait()
-        print("stopping", file=sys.stderr, flush=True)
         await sim.stop()
         return 0
     finally:

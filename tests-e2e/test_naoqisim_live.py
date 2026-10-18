@@ -72,7 +72,15 @@ def test_naoqi_sim_run_end_to_end(nao, tmp_path):
             pytest.fail(
                 f"naoqi-sim run exited ({run.wait()}) without being ready:\n{''.join(lines)}"
             )
-        assert f"on NAOqi {nao.version.naoqi_version}" in lines[-1]
+        label = f"NAOqi {nao.version.name} (sim)"
+        assert lines[-1] == (
+            f"{label}: NAOqi {nao.version.naoqi_version} ready at "
+            "tcp://127.0.0.1:9559 (Ctrl-C to stop)\n"
+        )
+        # The start's progress came first, NAOqi's start among it.
+        assert lines.index(f"{label}: starting\n") < lines.index(
+            f"{label}: NAOqi started\n"
+        )
 
         status = subprocess.run(
             [*NAOQI_SIM, "status"], capture_output=True, text=True, check=False
@@ -82,6 +90,7 @@ def test_naoqi_sim_run_end_to_end(nao, tmp_path):
 
         run.send_signal(stop)
         assert run.wait(timeout=120) == 0
+        assert f"{label}: NAOqi stopped" in run.stdout.read().splitlines()
         stopped = subprocess.run(
             [*NAOQI_SIM, "status"], capture_output=True, text=True, check=False
         )

@@ -8,6 +8,7 @@ cancelled one and `stop()` share one teardown, run in reverse.
 
 import asyncio
 import logging
+import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -89,6 +90,10 @@ class NaoqiSim:
         return self._config
 
     @property
+    def _label(self) -> str:
+        return docker_images.label(self._config.naoqi.version)
+
+    @property
     def running(self) -> bool:
         return self._running
 
@@ -122,6 +127,7 @@ class NaoqiSim:
         async with self._busy:
             if self._running:
                 raise NaoqiSimError("this NaoqiSim is already running")
+            log.info("%s: starting", self._label)
             abort = threading.Event()
             try:
                 world_config = await self._step(abort, self._check)
@@ -140,7 +146,6 @@ class NaoqiSim:
                 await asyncio.to_thread(self._teardown, False)
                 raise
             self._running = True
-            log.info("naoqi-sim ready at %s", URL)
 
     @staticmethod
     async def _step[T](abort: threading.Event, fn: Callable[..., T], *args: Any) -> T:
@@ -163,7 +168,9 @@ class NaoqiSim:
             if not self._running:
                 return
             self._running = False
+            log.info("%s: stopping", self._label)
             await asyncio.to_thread(self._teardown, True)
+            log.info("%s: NAOqi stopped", self._label)
 
     async def __aenter__(self) -> Self:
         await self.start()
@@ -178,6 +185,7 @@ class NaoqiSim:
         """Step 1: what the machine must offer before anything starts. Returns the viewer's
         config when the simulated world runs, else None."""
         config = self._config
+        log.info("%s: checking Docker, the images and the ports", self._label)
         docker_images.require_docker()
         docker_images.check_images(config.naoqi.version)
         world_config = (
@@ -203,9 +211,21 @@ class NaoqiSim:
         """Step 1, on the calling thread rather than a step's: on macOS, OpenCV can only ask the
         user for the camera permission from the main thread."""
         for device, keys in self._webcams().items():
+            log.info(
+                "%s: opening webcam %d for %s%s",
+                self._label,
+                device,
+                ", ".join(keys),
+                " (macOS may ask for the camera permission)"
+                if sys.platform == "darwin"
+                else "",
+            )
             check_webcam(device, keys)
 
     def _start_audio_output(self) -> None:
+        log.info(
+            "%s: starting the audio output (%s)", self._label, type(self._sink).__name__
+        )
         self._audio_output = AudioOutput(self._sink)
         server = Server(("0.0.0.0", AUDIO_OUTPUT_PORT), self._audio_output)
         thread = threading.Thread(
@@ -223,6 +243,9 @@ class NaoqiSim:
         self._undo.append(("audio output", stop_audio_output))
         if self._config.audio_input.source != "none":
             # Open before the containers boot, so ALAudioDevice finds it; closed after them.
+            log.info(
+                "%s: opening the host link on port %d", self._label, HOST_LINK_PORT
+            )
             self._link = HostLink(HOST_LINK_PORT)
             self._undo.append(("host link", self._close_link))
 
@@ -233,11 +256,21 @@ class NaoqiSim:
 
     def _start_containers(self) -> None:
         version = self._config.naoqi.version
+        log.info(
+            "%s: starting the containers (tts, %s)",
+            self._label,
+            docker_images.IMAGES[version].service,
+        )
         # Registered first: a failed `up` may have started some of them.
         self._undo.append(("containers", lambda: stack.down(version)))
         stack.up(self._config)
 
     def _start_world(self, world_config: Any) -> SimWorld:
+        log.info(
+            "%s: starting naoqi-viewer (%s)",
+            self._label,
+            "headless" if self._config.viewer.headless else "window",
+        )
         world = SimWorld(world_config)
         self._undo.append(("viewer", world.close))
         world.launch()
@@ -246,6 +279,17 @@ class NaoqiSim:
     def _start_video_input(self, world: SimWorld | None) -> None:
         """The cameras the config feeds, each from its source: the viewer's render, or a webcam
         (one capture per device, which both cameras can share), captures started first."""
+        settings = self._config.video_input
+        log.info(
+            "%s: starting the video input (%s)",
+            self._label,
+            ", ".join(
+                f"{camera} from "
+                + (f"webcam {getattr(settings, camera).device}" if s == "webcam" else s)
+                for camera, s in settings.sources.items()
+                if s != "none"
+            ),
+        )
         sources: dict[str, FrameSource] = {}
         for camera in self._config.video_input.cameras("render"):
             assert world is not None  # needs_viewer() launched it for a rendered camera
@@ -266,6 +310,9 @@ class NaoqiSim:
 
     def _start_audio_input(self) -> None:
         settings = self._config.audio_input
+        log.info(
+            "%s: starting the audio input (%s source)", self._label, settings.source
+        )
         assert self._link is not None and self._audio_output is not None
         source = (
             FakeAudioSource(settings.mono)
@@ -291,6 +338,7 @@ class NaoqiSim:
         first: BaseException | None = None
         while self._undo:
             name, undo = self._undo.pop()
+            log.info("%s: stopping the %s", self._label, name)
             try:
                 undo()
             except Exception as e:  # noqa: BLE001 (stop carries on through every step)
