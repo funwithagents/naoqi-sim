@@ -61,6 +61,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Touch input | Draft ([touch-input.md](host/touch-input.md)) |
 | `ALAudioPlayer` replacement | Built and tested on both versions: a NAO's API, WAV/OGG through the suite's libsndfile, mixed with speech, a C++ front for `stop(id)` ([audio-player.md](services/audio-player.md)) |
 | Simulated world (naoqi-viewer sim mode) | Built and tested: the window, and the headless viewer rendering both head cameras for the video input, in the live tier and CI ([viewer.md](host/viewer.md)) |
+| Props (`sim.props`: faces and objects in the scene) | Built and tested on both versions: faces and objects spawned in the scene's or the robot's frame, the live tier's red ball and face ([props.md](host/props.md)) |
 | Distribution (uv git dependency: wheel with the recipes, user data directory) | Implemented ([project.md](project.md), "Distribution") |
 | CI | Implemented ([ci.md](testing/ci.md)) |
 | Capability probe | Checked by hand only; deferred (see [below](#capability-probe)) |
@@ -120,10 +121,12 @@ Specified in [devices.md](host/devices.md): the simulated robot's inputs and out
 
 ## Simulated world: naoqi-viewer
 
-Specified in [viewer.md](host/viewer.md). naoqi-viewer is a separate package (its own repository) that owns the NAO MuJoCo model, the license-gated meshes and the 3D rendering, a kinematic mirror rather than a physics simulation. naoqi-sim drives its **sim mode** through its public API (`NaoqiViewer(config).launch()`, `camera_frame`, `status()`, `close()`), from its own `viewer` block (`{headless, scene, variant}`), behind the `naoqi-sim[viewer]` extra:
+Specified in [viewer.md](host/viewer.md). naoqi-viewer is a separate package (its own repository) that owns the NAO MuJoCo model, the license-gated meshes and the 3D rendering, a kinematic mirror rather than a physics simulation. naoqi-sim drives its **sim mode** through its public API (`NaoqiViewer(config).launch()`, `camera_frame`, `props`, `status()`, `close()`), from its own `viewer` block (`{headless, scene, variant, cameras_display, people_display}`), behind the `naoqi-sim[viewer]` extra:
 
 - a window showing the robot posed from naoqi-sim's NAOqi in a scene (`empty` by default);
 - the head-camera renders the video input injects into `ALVideoDevice` (`source = "render"` on a camera of the `video_input` block), which close the loop: NAOqi moves the head, the viewer renders what that camera sees;
+- the props a test puts in the scene through `sim.props` ([props.md](host/props.md)): portrait faces for a client's detector to find, coloured objects for the camera to see, spawned, moved and hidden while the robot runs, in the scene's frame or the robot's;
+- the people a client publishes in ALMemory, drawn as markers in the window (`viewer.people_display`);
 - later, clicks on the robot that the touch input turns into touches.
 
 The viewer process only reads NAOqi; everything NAOqi-specific stays in naoqi-sim. Without the extra, naoqi-sim runs with no window and no render camera, and every NAOqi API still works. The live tier and CI run it headless with the render camera from the start ([ci.md](testing/ci.md)).
@@ -209,7 +212,7 @@ Built as [project.md](project.md) ("Distribution") specifies: another project de
 
 ## Testing
 
-Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tier with no Docker, and an opt-in `tests-e2e/` tier that builds, starts and stops each version's stack itself. CI ([ci.md](testing/ci.md)) runs both on GitHub's hosted `ubuntu-24.04` runners, with no self-hosted runner, as reachy-mini-bridge's CI does: a static gate, the fast tier, and a live matrix over 2.1 and 2.8 that fetches, builds and caches the images itself (never pushed), with a headless viewer and the render camera. Downstream repositories (naoqi-viewer, client libraries) pin a naoqi-sim commit for their own live jobs; naoqi-sim's CI does not test them.
+Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tier with no Docker, and an opt-in `tests-e2e/` tier that builds, starts and stops each version's stack itself. CI ([ci.md](testing/ci.md)) runs both on GitHub's hosted `ubuntu-24.04` runners, with no self-hosted runner: a static gate, the fast tier, and a live matrix over 2.1 and 2.8 that fetches, builds and caches the images itself (never pushed), with a headless viewer and the render camera. Downstream repositories (naoqi-viewer, client libraries) pin a naoqi-sim commit for their own live jobs; naoqi-sim's CI does not test them.
 
 ## Milestones
 
@@ -236,6 +239,8 @@ Questions that belong to a concept live in its spec; these cross several.
 - [ ] **Docker Desktop**: everything was measured on OrbStack and Linux's Docker Engine; Docker Desktop on macOS, Linux and Windows is to confirm. GitHub's Windows runner can run Linux containers in WSL 2, reachable both ways once its firewalls are opened ([container.md](container/container.md), "Linux containers on GitHub's Windows runner"), and the live tier passed there once (54 passed), host side on Windows, NAOqi 2.1 in WSL 2; Docker Desktop itself is still to run.
 - [ ] **Speech duration tolerance**: how close `say()` must be to a NAO's own durations (proposed ±20% per sentence), and the reference values ([speech.md](services/speech.md)).
 - **Emulation speed**: the NAOqi images run under amd64 emulation on Apple Silicon. Measured boot is about 5 s (2.1) and 15 s (2.8) with no visible lag; the probe records timing if that changes.
+- [ ] **Injecting stimuli into NAOqi** (decided Oct 18, 2026, deferred): a fake population written to ALMemory as the people-perception contract (which the built-in `ALBasicAwareness` and `ALTracker` react to, [above](#perception-and-speech-recognition-on-the-clients)), located sounds and other stimuli, so tests drive behaviours without a detector. A client (naoqi-bridge) will want the same on a real robot, so it is not naoqi-sim's alone; where it lives is to decide with it. The props of [props.md](host/props.md) cover what the cameras see meanwhile.
+- [ ] **Injecting images into the video input** (deferred Oct 18, 2026): a `fake` source taking images or recordings from code, the counterpart of `sim.fake_audio`, for recorded faces or pixel-exact fixtures without a viewer. Props cover the tests at hand; the video input's source seam makes it a small addition when one needs it.
 
 Moved to their specs: the sound set ([audio-player.md](services/audio-player.md)), the virtual robot sensors, the sim window's lifecycle and the NAO V6 geometry ([viewer.md](host/viewer.md)), the render-camera throughput ([video-input.md](host/video-input.md)).
 

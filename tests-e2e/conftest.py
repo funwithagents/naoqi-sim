@@ -21,7 +21,6 @@ import sys
 import time
 import uuid
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 import qi
@@ -48,8 +47,6 @@ from naoqi_sim.config import (
     ViewerSettings,
 )
 from naoqi_sim.errors import BootError
-
-SCENE = Path(__file__).resolve().parent / "scenes" / "camera-target.xml"
 
 # Runs a test's Python 2.7 inside NAOqi's embedded interpreter, where Choregraphe's boxes run, on a
 # thread, and leaves `run()`'s result (or the traceback) as JSON in an ALMemory key.
@@ -78,15 +75,13 @@ def pytest_configure(config):
 
 
 def live_config(version: str, **blocks) -> NaoqiSimConfig:
-    """Headless and silent, with the render camera looking at the camera-target scene (a
-    red pillar straight ahead) and the fake audio source: what the live tier runs, unless a test
-    asks for something else."""
+    """Headless and silent, with the render camera on naoqi-viewer's empty scene (the tests spawn
+    what the cameras look at, as props) and the fake audio source: what the live tier runs,
+    unless a test asks for something else."""
     settings = {
         "naoqi": NaoqiSettings(version=version),  # type: ignore[arg-type]
         "audio_output": AudioOutputSettings(mode="silent"),
-        "viewer": ViewerSettings(
-            headless=True, scene=str(SCENE), variant="placeholder"
-        ),
+        "viewer": ViewerSettings(headless=True, variant="placeholder"),
         # The bottom camera slow: a CI runner renders in software, and its renders are what
         # the live tier's timing tests compete with for the CPU (ci.md).
         "video_input": VideoInputSettings(

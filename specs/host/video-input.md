@@ -91,7 +91,7 @@ Oct 16, 2026, both cameras rendered (plan [202610161135_video-input-both-cameras
 - Both cameras at `fps = 15`: 15.0 frames per second on each camera, on 2.1 and 2.8, read by a QVGA subscriber of each (`getImageRemote` polled, distinct timestamps counted over 4 s).
 - Both cameras at `fps = 30`: 29.8 (top) and 17.5 (bottom) per second on 2.1, 29.8 and 15.0 on 2.8. Two renders at one per 60 Hz tick take the whole 33 ms slot, so the slightest overhead runs past it and a slot is skipped; the top camera's slot comes first, so the bottom camera's is the one skipped. (With the one schedule for both cameras this plan first built, both fell to 15 to 20.)
 - Top camera at 30, bottom at 10: 29.8 and 10.0 on 2.1, 29.2 and 10.0 on 2.8: 40 renders per second fit the viewer's budget, and each camera keeps its rate, which is what the per-camera `fps` is for.
-- The live tier's pinhole test of the bottom camera (`test_the_bottom_camera_looks_down_at_the_pillars_foot`) passes on both versions with its 15-row tolerance at QVGA: the viewer's `CameraBottom` pose and NAOqi's `getPosition("CameraBottom")` agree.
+- The live tier's pinhole test of the bottom camera (`test_the_bottom_camera_looks_down_at_the_pillars_foot`) passes on both versions with its 15-row tolerance at QVGA: the viewer's `CameraBottom` pose and NAOqi's `getPosition("CameraBottom")` agree. Since Oct 18, 2026 the test looks down at a red ball spawned as a prop ([props.md](props.md)), `test_the_bottom_camera_looks_down_at_the_ball`, and passes on both versions with the same tolerance.
 
 ## Open questions
 

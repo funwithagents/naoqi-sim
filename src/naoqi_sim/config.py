@@ -326,6 +326,8 @@ class ViewerSettings(_Loaders):
     variant: ViewerVariant = "auto"
     # the head cameras as ALVideoDevice serves them, as pictures in the window
     cameras_display: bool = False
+    # the people NAOqi lists in ALMemory, as markers in the window
+    people_display: bool = False
 
     def __post_init__(self) -> None:
         if not self.scene:
@@ -335,6 +337,11 @@ class ViewerSettings(_Loaders):
             raise ConfigError(
                 "is drawn only in the window, and a headless viewer has none",
                 key="cameras_display",
+            )
+        if self.headless and self.people_display:
+            raise ConfigError(
+                "is drawn only in the window, and a headless viewer has none",
+                key="people_display",
             )
 
     @classmethod
@@ -348,6 +355,7 @@ class ViewerSettings(_Loaders):
                 "scene": _as_str,
                 "variant": _as_str,
                 "cameras_display": _as_bool,
+                "people_display": _as_bool,
             },
         )
 

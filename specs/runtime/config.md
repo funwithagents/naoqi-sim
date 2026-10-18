@@ -36,7 +36,7 @@ This config is the **host-level** description. The container keeps its own inter
   "audio_output": { "mode": "play", "record": null },
   "audio_input": { "source": "none", "mono": "duplicate" },
   "video_input": { "top": { "source": "none", "fps": 15, "device": 0 }, "bottom": { "source": "none", "fps": 15, "device": 0 } },
-  "viewer": { "headless": false, "scene": "empty", "variant": "auto", "cameras_display": false }
+  "viewer": { "headless": false, "scene": "empty", "variant": "auto", "cameras_display": false, "people_display": false }
 }
 ```
 
@@ -116,6 +116,8 @@ class ViewerSettings:
     variant: ViewerVariant = "auto"
     # the head cameras as ALVideoDevice serves them, as pictures in the window
     cameras_display: bool = False
+    # the people NAOqi lists in ALMemory, as markers in the window
+    people_display: bool = False
 ```
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
@@ -130,7 +132,7 @@ class ViewerSettings:
 - Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio_output.record`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
 - **Unknown keys are errors**, so a typo fails when the config loads.
 - **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; a camera's `fps` is an integer from 1 to 30 (a NAO camera's maximum) and its `device` a non-negative integer; `viewer.scene` is a non-empty string.
-- **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`; `viewer.cameras_display` is refused with `viewer.headless` (the pictures are drawn in the window, as naoqi-viewer refuses them). Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
+- **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`; `viewer.cameras_display` and `viewer.people_display` are refused with `viewer.headless` (the pictures and the markers are drawn in the window, as naoqi-viewer refuses them). Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
 - **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `naoqi_viewer`, nor `sounddevice`.
 
@@ -154,7 +156,7 @@ The block's shape changed on Oct 16, 2026 from one `source`/`fps`/`device` for t
 
 So a server config is `{"viewer": {"headless": true}}`, and it needs no extra; CI runs a headless viewer with the render camera instead ([ci.md](../testing/ci.md)).
 
-The `viewer` block is naoqi-sim's own, not an embedded `NaoqiViewerConfig`: `NaoqiSim` builds the viewer's config from it as `NaoqiViewerConfig(mode="sim", headless=headless, cameras_display=cameras_display, naoqi=NaoqiSettings(url=sim.url), world=WorldSettings(scene=scene, variant=variant))`. The mode and the NAOqi URL follow from running naoqi-sim, so they are not settings; naoqi-viewer's other fields (`ghost`, `naoqi.rate_hz`, `launch_timeout_s`) keep naoqi-viewer's defaults. `cameras_display` (naoqi-viewer's camera display, from its commit `8f3976f`) shows the two head cameras in the window's top-right corner as `ALVideoDevice` serves them, read back over qi like any client: what naoqi-sim injected, render or webcam, so it checks the camera path end to end; it costs NAOqi one QVGA subscription at 10 fps, which the video input ignores like any subscriber. `scene` and `variant` take naoqi-viewer's values and defaults (`empty`, `auto`); this module only checks their form (a non-empty string; one of the three variants), since `config.py` does not import `naoqi_viewer`. The rest is checked by naoqi-viewer itself, in `NaoqiSim.start()` ([api.md](api.md), "Lifecycle"): an unknown bundled scene when step 1 builds the `NaoqiViewerConfig` (re-raised as a `ConfigError` with key `viewer.scene`, before anything starts), missing meshes when the viewer launches.
+The `viewer` block is naoqi-sim's own, not an embedded `NaoqiViewerConfig`: `NaoqiSim` builds the viewer's config from it as `NaoqiViewerConfig(mode="sim", headless=headless, cameras_display=cameras_display, people_display=people_display, naoqi=NaoqiSettings(url=sim.url), world=WorldSettings(scene=scene, variant=variant))`. The mode and the NAOqi URL follow from running naoqi-sim, so they are not settings; naoqi-viewer's other fields (`ghost`, `naoqi.rate_hz`, `launch_timeout_s`) keep naoqi-viewer's defaults. `cameras_display` (naoqi-viewer's camera display, from its commit `8f3976f`) shows the two head cameras in the window's top-right corner as `ALVideoDevice` serves them, read back over qi like any client: what naoqi-sim injected, render or webcam, so it checks the camera path end to end; it costs NAOqi one QVGA subscription at 10 fps, which the video input ignores like any subscriber. `people_display` (naoqi-viewer's people display) draws the people a client published under `PeoplePerception/` in ALMemory as markers in the window, never in a camera render ([viewer.md](../host/viewer.md), "Configuration"); it costs NAOqi a few ALMemory reads a second. `scene` and `variant` take naoqi-viewer's values and defaults (`empty`, `auto`); this module only checks their form (a non-empty string; one of the three variants), since `config.py` does not import `naoqi_viewer`. The rest is checked by naoqi-viewer itself, in `NaoqiSim.start()` ([api.md](api.md), "Lifecycle"): an unknown bundled scene when step 1 builds the `NaoqiViewerConfig` (re-raised as a `ConfigError` with key `viewer.scene`, before anything starts), missing meshes when the viewer launches.
 
 ### Sources not built yet
 
@@ -184,4 +186,4 @@ JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, a
 
 ## Open questions
 
-1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), an image data folder other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one naoqi-sim runs per machine). Adding a block does not break existing files.
+1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), an image data folder other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one naoqi-sim runs per machine), props spawned at start from the config ([props.md](../host/props.md), open questions). Adding a block does not break existing files.

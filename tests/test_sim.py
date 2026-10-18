@@ -77,6 +77,8 @@ class Viewer:
             def close(self):
                 viewer.events.append("close")
 
+            props = "the world's props"
+
         return World()
 
 
@@ -588,3 +590,26 @@ def test_constructing_does_nothing(env):
     time.sleep(0.05)
     assert env.calls == []
     assert not listening(sim.AUDIO_OUTPUT_PORT)
+
+
+def test_props_are_the_worlds_while_running(env):
+    naoqisim = sim.NaoqiSim(NaoqiSimConfig(), sink=MemorySink())
+    with pytest.raises(NotRunningError):
+        naoqisim.props  # noqa: B018
+    asyncio.run(naoqisim.start())
+    try:
+        assert naoqisim.props == "the world's props"
+    finally:
+        asyncio.run(naoqisim.stop())
+    with pytest.raises(NotRunningError):
+        naoqisim.props  # noqa: B018
+
+
+def test_props_need_a_viewer(env):
+    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    asyncio.run(naoqisim.start())
+    try:
+        with pytest.raises(NaoqiSimError, match="runs no viewer"):
+            naoqisim.props  # noqa: B018
+    finally:
+        asyncio.run(naoqisim.stop())

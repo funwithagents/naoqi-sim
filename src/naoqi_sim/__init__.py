@@ -95,3 +95,13 @@ __all__ = [
     "fetch_and_build_images",
     "read_status",
 ]
+
+
+def __getattr__(name: str):
+    """naoqi-viewer's `PropState` and `PropError`, for the callers of `NaoqiSim.props`; they need
+    the `viewer` extra, so they are imported only when asked for."""
+    if name in ("PropState", "PropError"):
+        import naoqi_viewer
+
+        return getattr(naoqi_viewer, name)
+    raise AttributeError(f"module 'naoqi_sim' has no attribute {name!r}")
