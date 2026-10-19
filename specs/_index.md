@@ -64,7 +64,7 @@ The simulated robot's inputs and outputs on the host, owned by a running `NaoqiS
 | [video-input.md](host/video-input.md) | The robot's head cameras: naoqi-viewer render and the host webcam (OpenCV behind the `webcam` extra, centre-cropped to 4:3), VGA frames of `CameraTop` and `CameraBottom` injected with `putImage` at a fixed `fps` per camera whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |
 | [viewer.md](host/viewer.md) | The simulated world: naoqi-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, the camera display (both head cameras from `ALVideoDevice` in the window), the people display (a client's people from ALMemory as markers), headless with the render camera in the live tier and CI | Implemented |
-| [props.md](host/props.md) | Props: what a test puts in front of the simulated robot, `sim.props` over naoqi-viewer's pool of faces and objects (spawn, place, despawn, clear), positions in the scene's frame or the robot's (`ALMotion.getRobotPosition`), the live tier's red sphere in place of the pillar scene; people and video injection deferred | Implemented |
+| [props.md](host/props.md) | Props: what a test puts in front of the simulated robot, `sim.props` as naoqi-viewer's client for its pool of faces and objects (spawn, place, despawn, clear), positions in the scene's frame or the robot's (naoqi-viewer's `frame`), the live tier's red ball in place of the pillar scene; people and video injection deferred | Implemented |
 
 ### Testing: `testing/`
 

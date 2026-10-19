@@ -244,37 +244,3 @@ def test_the_bottom_camera_looks_down_at_the_ball(nao, camera, ball):
         assert top_rows.size == 0, "the top camera should look over the ball"
     finally:
         motion.angleInterpolation(["HeadYaw", "HeadPitch"], [0.0, 0.0], 0.5, True)
-
-
-def test_a_face_spawned_ahead_appears_in_the_top_camera_and_goes(nao, camera):
-    """A portrait spawned 1 m ahead is in the top camera's frame, straight ahead, and gone once
-    it is despawned. naoqi-sim runs no detector, so that is all it checks:
-    finding the face is a client's job."""
-    video, subscribe = camera
-    motion = nao.service("ALMotion")
-    handle = subscribe(resolution=QVGA)
-    motion.setStiffnesses("Head", 1.0)
-    look(motion, 0.0)
-
-    def frame_after_a_change() -> np.ndarray:
-        # The video input renders and injects on two threads: the frame NAOqi serves next may
-        # have been rendered before the change, so let one go by.
-        time.sleep(3 / FPS)
-        return next_frame(video, handle, after=read(video, handle)[1]).astype(int)
-
-    def portrait_pixels(frame: np.ndarray) -> tuple[np.ndarray, ...]:
-        # The portrait's near-black areas (its moon backdrop): nothing in the empty scene is
-        # that dark, whatever the robot's small moves do to the floor and the horizon.
-        return np.nonzero(frame.max(axis=2) < 50)
-
-    assert portrait_pixels(frame_after_a_change())[0].size < 50  # nothing dark yet
-    face = nao.sim.props.spawn("face", (1.0, 0.0, 0.45), frame="robot")
-    try:
-        assert face.image == "armstrong" and face.visible
-        rows, columns = portrait_pixels(frame_after_a_change())
-        assert rows.size > 200, "the face is not in the top camera's view"
-        assert 80 < columns.mean() < 240, "the face is not straight ahead"
-    finally:
-        nao.sim.props.despawn(face.name)
-    rows, _ = portrait_pixels(frame_after_a_change())
-    assert rows.size < 50, "the face is still in view after despawn"

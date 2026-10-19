@@ -116,7 +116,7 @@ So `start()` only checks: an image missing or not verified raises `ImagesMissing
 | `url` | `str` | `tcp://127.0.0.1:9559`, the address any qi client connects to |
 | `await status()` | `NaoqiSimStatus` | Read from the `NaoqiSim` service over qi, in one connect attempt (libqi 3.1.8 fixed the failed connects 3.1.6 needed retries for): `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
 | `fake_audio` | `FakeAudioSource` | The fake audio source a test plays sounds through ([audio-input.md](../host/audio-input.md), "The fake source"); `NotRunningError` when not running, `NaoqiSimError` when `audio_input.source` is not `fake` |
-| `props` | naoqi-viewer's `PropsClient`, wrapped | The props of the simulated world a test spawns, places and despawns, with the robot's frame added ([props.md](../host/props.md)); `NotRunningError` when not running, `NaoqiSimError` when the config runs no viewer |
+| `props` | naoqi-viewer's `PropsClient` | The props of the simulated world a test spawns, places and despawns, in the scene's frame or the robot's ([props.md](../host/props.md)); `NotRunningError` when not running, `NaoqiSimError` when the config runs no viewer |
 | `config` | `NaoqiSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |
 
