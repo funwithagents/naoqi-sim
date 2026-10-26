@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from naoqi_sim import files, suite
+from naoqi_sim.config import SpeechSettings
 from naoqi_sim.errors import (
     BootError,
     DockerUnavailableError,
@@ -50,7 +51,9 @@ TTS_IMAGE = "naoqi-sim/tts:dev"
 TTS_CONTAINER = "naoqi-sim-tts"
 NAOQI_PORT = 9559
 READY_TIMEOUT = 240.0  # seconds for the NAOqi container to turn healthy
-TTS_TIMEOUT = 15.0  # seconds for the tts engine to answer once NAOqi is healthy
+TTS_TIMEOUT = (
+    60.0  # seconds for the tts engine to load its voices once NAOqi is healthy
+)
 POLL = 1.0
 
 
@@ -253,14 +256,7 @@ def wait_healthy(
     boot_log = _BootLog(images)
     end = time.monotonic() + timeout
     while True:
-        res = run(
-            "docker",
-            "inspect",
-            "-f",
-            "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
-            images.container,
-        )
-        state = res.stdout.split() if res.returncode == 0 else ["missing"]
+        state = _state(images.container)
         if state == ["running", "healthy"]:
             boot_log.relay()
             log.info("%s: NAOqi started", label(images.version))
@@ -282,17 +278,55 @@ def wait_healthy(
             time.sleep(POLL)
 
 
-_TTS_HEALTH = "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"
+def _state(container: str) -> list[str]:
+    """`[status, health]` of a container (`["missing"]` when Docker does not know it)."""
+    res = run(
+        "docker",
+        "inspect",
+        "-f",
+        "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+        container,
+    )
+    return res.stdout.split() if res.returncode == 0 else ["missing"]
 
 
-def _wait_tts() -> None:
-    end = time.monotonic() + TTS_TIMEOUT
-    while run("docker", "exec", TTS_CONTAINER, "python", "-c", _TTS_HEALTH).returncode:
+def wait_tts(
+    images: Images,
+    languages: Iterable[str],
+    timeout: float | None = None,
+    abort: threading.Event | None = None,
+) -> None:
+    """Until the speech engine's container is healthy: every installed language's voice loaded,
+    a language's first use downloading its voice (tts-engine.md, "Languages"). `BootError` if it
+    exits, turns unhealthy or takes longer than `timeout` (default `TTS_TIMEOUT`), with the end
+    of its log, or as soon as `abort` is set."""
+    timeout = TTS_TIMEOUT if timeout is None else timeout
+    log.info(
+        "%s: waiting for the speech engine to load the voices of %s "
+        "(a language's first use downloads its voice)",
+        label(images.version),
+        ", ".join(languages),
+    )
+    end = time.monotonic() + timeout
+    while True:
+        state = _state(TTS_CONTAINER)
+        if state == ["running", "healthy"]:
+            log.info("%s: speech engine ready", label(images.version))
+            return
+        if state[0] != "running" or state[1:] == ["unhealthy"]:
+            raise BootError(
+                f"the tts engine did not start ({' '.join(state)}):\n"
+                + container_logs(TTS_CONTAINER)
+            )
         if time.monotonic() > end:
             raise BootError(
-                f"the tts engine does not answer:\n{container_logs(TTS_CONTAINER)}"
+                f"the tts engine not healthy after {timeout:.0f} s:\n"
+                + container_logs(TTS_CONTAINER)
             )
-        time.sleep(POLL)
+        if abort is not None and abort.wait(POLL):
+            raise BootError("waiting for the tts engine was cancelled")
+        if abort is None:
+            time.sleep(POLL)
 
 
 def _build(images: Images, env: dict[str, str]) -> None:
@@ -315,7 +349,7 @@ def _verify(images: Images, env: dict[str, str]) -> None:
                 f"docker compose up failed for NAOqi {images.version}:\n{res.stderr[-3000:]}"
             )
         wait_healthy(images)
-        _wait_tts()
+        wait_tts(images, SpeechSettings().languages)  # the image has their voices
     finally:
         run(*images.compose(), "down", timeout=300, env=env)
 

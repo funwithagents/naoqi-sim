@@ -75,7 +75,7 @@ class NaoqiSimTextToSpeech(object):
         return list(core.LANGUAGES)
 
     def getSupportedLanguages(self):
-        return list(core.LANGUAGES)
+        return list(core.SUPPORTED_LANGUAGES)
 
     def resetSpeed(self):
         self.speaker.state["rspd"] = 100
@@ -102,7 +102,7 @@ class NaoqiSimTextToSpeech(object):
         return self.speaker.volume
 
     def locale(self):
-        return "en_US"
+        return self.speaker.locale()
 
     def loadVoicePreference(self, name):
         _log(method="loadVoicePreference", name=name)

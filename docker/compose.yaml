@@ -1,4 +1,4 @@
-# The project is always `naoqi-sim` (containers, network, the package store volumes).
+# The project is always `naoqi-sim` (containers, network, the package store and voice volumes).
 name: naoqi-sim
 
 services:
@@ -12,7 +12,19 @@ services:
     container_name: naoqi-sim-tts
     environment:
       NAOQI_SIM_SOUNDCARD: host.docker.internal:9562
-      NAOQI_SIM_TTS_ENGINE: ${NAOQI_SIM_TTS_ENGINE:-piper}
+      # The installed languages (the config's speech.languages): the engine loads their voices
+      # before it is healthy, fetching into the volume those the image lacks.
+      NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}
+    volumes:
+      - piper-voices:/voices
+    healthcheck:
+      # 200 once every installed language's voice is loaded, 503 meanwhile; a language's first
+      # use downloads its voice (about 60 MB), hence the long start period.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"]
+      interval: 2s
+      timeout: 6s
+      retries: 3
+      start_period: 600s
     extra_hosts:
       - "host.docker.internal:host-gateway"
   naoqi21:
@@ -34,10 +46,14 @@ services:
     container_name: naoqi-sim-naoqi21
     environment:
       NAOQI_SIM_TTS_URL: http://tts:8080
+      # The installed languages, what ALTextToSpeech.getAvailableLanguages answers (specs/services/speech.md).
+      NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
       NAOQI_SIM_HOST_LINK: host.docker.internal:9563
       # The host audio output, which ALAudioPlayer streams its sounds into (specs/services/audio-player.md).
       NAOQI_SIM_SOUNDCARD: host.docker.internal:9562
+    # Started after the engine, not after its voices: both boot in parallel and NaoqiSim.start()
+    # waits for each to be healthy (specs/runtime/api.md, "Lifecycle").
     depends_on: [tts]
     ports:
       - "127.0.0.1:9559:9559"
@@ -64,6 +80,8 @@ services:
     container_name: naoqi-sim-naoqi28
     environment:
       NAOQI_SIM_TTS_URL: http://tts:8080
+      # The installed languages, what ALTextToSpeech.getAvailableLanguages answers (specs/services/speech.md).
+      NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
       NAOQI_SIM_HOST_LINK: host.docker.internal:9563
       # The host audio output, which ALAudioPlayer streams its sounds into (specs/services/audio-player.md).
@@ -78,6 +96,9 @@ services:
 
 # Package stores (PackageManager's apps/ and pm.db), one per version: packages installed over qi
 # or Choregraphe survive `docker compose down`; `down -v` resets to the image's factory packages.
+# The voices the speech engine fetched for the languages the image lacks: one volume, voices do
+# not depend on the NAOqi version; `down -v` empties it and the image's default voices remain.
 volumes:
   packages-2.1:
   packages-2.8:
+  piper-voices:

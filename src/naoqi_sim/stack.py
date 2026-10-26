@@ -66,7 +66,10 @@ class StackStatus:
 def up(config: NaoqiSimConfig) -> None:
     """Start the `tts` service and the version's NAOqi service from the verified images."""
     images = IMAGES[config.naoqi.version]
-    env = {**files.compose_env(), "NAOQI_SIM_TTS_ENGINE": config.speech.engine}
+    env = {
+        **files.compose_env(),
+        "NAOQI_SIM_LANGUAGES": ",".join(config.speech.languages),
+    }
     res = run(
         *images.compose(),
         "up",
@@ -84,8 +87,17 @@ def up(config: NaoqiSimConfig) -> None:
 
 
 def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> None:
+    """Until NAOqi is healthy, then until the speech engine is: the two boot in parallel, and
+    the engine's first use of a language downloads its voice, which NAOqi's boot usually hides."""
+    images = IMAGES[config.naoqi.version]
     docker_images.wait_healthy(
-        IMAGES[config.naoqi.version], timeout=config.naoqi.ready_timeout_s, abort=abort
+        images, timeout=config.naoqi.ready_timeout_s, abort=abort
+    )
+    docker_images.wait_tts(
+        images,
+        config.speech.languages,
+        timeout=config.naoqi.ready_timeout_s,
+        abort=abort,
     )
 
 

@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Literal, Self, get_args
 
 NaoqiVersion = Literal["2.1", "2.8"]
-SpeechEngine = Literal["piper", "espeak"]
 AudioOutputMode = Literal["play", "silent", "record"]
 AudioInputSource = Literal["none", "mic", "fake"]
 MonoPolicy = Literal["duplicate", "silence"]
@@ -23,6 +22,28 @@ VideoInputSource = Literal["none", "render", "webcam"]
 ViewerVariant = Literal["auto", "placeholder", "aldebaran"]
 
 MAX_FPS = 30  # a NAO camera's highest frame rate
+
+# NAOqi's language names the speech engine has a voice for, in the engine's table order
+# (docker/tts-engine/server.py, `VOICES`; the fast tier checks the two lists agree). What
+# `speech.languages` may install (specs/container/tts-engine.md, "Languages").
+SPEECH_LANGUAGES = (
+    "English",
+    "French",
+    "German",
+    "Dutch",
+    "Swedish",
+    "Spanish",
+    "Brazilian",
+    "Czech",
+    "Danish",
+    "Finnish",
+    "Italian",
+    "Norwegian",
+    "Polish",
+    "Portuguese",
+    "Russian",
+    "Turkish",
+)
 
 
 class ConfigError(ValueError):
@@ -74,6 +95,12 @@ def _as_int(value: Any) -> int:
 
 def _as_path(value: Any) -> Path | None:
     return None if value is None else Path(_as_str(value))
+
+
+def _as_str_tuple(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ConfigError(f"must be a list of strings, got {value!r}")
+    return tuple(value)
 
 
 def _check_choice(value: Any, kind: Any, key: str) -> None:
@@ -161,6 +188,8 @@ class _Loaders:
                 return str(value)
             if isinstance(value, dict):
                 return {k: plain(v) for k, v in value.items()}
+            if isinstance(value, tuple):
+                return [plain(v) for v in value]
             return value
 
         return plain(asdict(self))  # type: ignore[call-overload]  # every subclass is a dataclass
@@ -197,16 +226,31 @@ class NaoqiSettings(_Loaders):
 
 @dataclass(frozen=True)
 class SpeechSettings(_Loaders):
-    """The tts container's engine."""
+    """The installed languages, as a NAO's language packs (specs/services/speech.md,
+    "Language"): what `ALTextToSpeech.getAvailableLanguages` answers and `setLanguage` accepts,
+    by NAOqi name; the first is the language at boot. Each needs a voice in the speech engine
+    (`SPEECH_LANGUAGES`); the two default ones are in its image, any other is fetched on first use."""
 
-    engine: SpeechEngine = "piper"
+    languages: tuple[str, ...] = ("English", "French")
 
     def __post_init__(self) -> None:
-        _check_choice(self.engine, SpeechEngine, "engine")
+        languages = tuple(self.languages)
+        object.__setattr__(self, "languages", languages)
+        if not languages:
+            raise ConfigError("must name at least one language", key="languages")
+        for name in languages:
+            if name not in SPEECH_LANGUAGES:
+                raise ConfigError(
+                    f"{name!r} has no voice in the speech engine; the languages with one: "
+                    + ", ".join(SPEECH_LANGUAGES),
+                    key="languages",
+                )
+        if len(set(languages)) != len(languages):
+            raise ConfigError("names a language twice", key="languages")
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
-        return _parse_block(cls, data, path, {"engine": _as_str})
+        return _parse_block(cls, data, path, {"languages": _as_str_tuple})
 
 
 @dataclass(frozen=True)

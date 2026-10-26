@@ -8,6 +8,7 @@ code:
   - examples/configs/ci.json
   - examples/configs/mic.json
   - examples/configs/webcam.json
+  - examples/configs/languages.json
 tests:
   - tests/test_config.py
   - tests/test_project_map.py
@@ -19,7 +20,7 @@ tests:
 
 ## Purpose
 
-One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoqiSim`](api.md) is built from it, the `naoqi-sim` CLI loads it from a file, and a program that runs a simulated NAO can embed it in its own config. Today the same facts are spread over `docker compose` profiles, environment variables (`NAOQI_SIM_VERSION`, `NAOQI_SIM_TTS_ENGINE`) and the audio output's flags; a config file makes a setup reproducible and lets a test, a CLI user and a Python program describe the same stack the same way.
+One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoqiSim`](api.md) is built from it, the `naoqi-sim` CLI loads it from a file, and a program that runs a simulated NAO can embed it in its own config. Before it the same facts were spread over `docker compose` profiles, environment variables (`NAOQI_SIM_VERSION`, `NAOQI_SIM_LANGUAGES`) and the audio output's flags; a config file makes a setup reproducible and lets a test, a CLI user and a Python program describe the same stack the same way.
 
 Its conventions (frozen dataclasses, three loaders sharing one validation path, unknown keys rejected, errors naming the key path; below) keep it self-contained, so a naoqi-sim config can be pasted unchanged into a larger JSON config and loaded from there with `NaoqiSimConfig.from_dict`.
 
@@ -32,7 +33,7 @@ This config is the **host-level** description. The container keeps its own inter
 ```json
 {
   "naoqi": { "version": "2.1", "ready_timeout_s": 240 },
-  "speech": { "engine": "piper" },
+  "speech": { "languages": ["English", "French"] },
   "audio_output": { "mode": "play", "record": null },
   "audio_input": { "source": "none", "mono": "duplicate" },
   "video_input": { "top": { "source": "none", "fps": 15, "device": 0 }, "bottom": { "source": "none", "fps": 15, "device": 0 } },
@@ -61,8 +62,11 @@ class NaoqiSettings:
 
 @dataclass
 class SpeechSettings:
-    # "piper" | "espeak" (the tts container's NAOQI_SIM_TTS_ENGINE)
-    engine: SpeechEngine = "piper"
+    # The installed languages, as a NAO's language packs: what ALTextToSpeech.getAvailableLanguages
+    # answers and setLanguage accepts, by NAOqi name; the first is the language at boot. Each needs
+    # a voice in the speech engine (SPEECH_LANGUAGES, the engine's table: tts-engine.md, "Voices");
+    # English's and French's are in its image, any other is fetched on its first use.
+    languages: tuple[str, ...] = ("English", "French")
 
 
 @dataclass
@@ -129,9 +133,9 @@ class ViewerSettings:
 - Every config class has the same three constructors: `from_dict(data)`, `from_json(text)` (parses, then calls `from_dict`), and `from_json_file(path)` (reads, then calls `from_json`; an invalid-JSON error names the path). All three share one validation path.
 - Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio_output.record`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
 - **Unknown keys are errors**, so a typo fails when the config loads.
-- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; a camera's `fps` is an integer from 1 to 30 (a NAO camera's maximum) and its `device` a non-negative integer; `viewer.scene` is a non-empty string.
+- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; a camera's `fps` is an integer from 1 to 30 (a NAO camera's maximum) and its `device` a non-negative integer; `viewer.scene` is a non-empty string; `speech.languages` is a non-empty list of distinct names, each one the engine has a voice for (`SPEECH_LANGUAGES`, which the fast tier checks against the engine's table), so a language NAOqi supports but the engine has no voice for (`Japanese`) fails at load, naming the languages that have one, rather than at the first `say`. In code a list is accepted and kept as a tuple.
 - **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`; `viewer.cameras_display` is refused with `viewer.headless` (the pictures are drawn in the window, as naoqi-viewer refuses them). Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
-- **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
+- **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists, a language's voice can be fetched: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `naoqi_viewer`, nor `sounddevice`.
 
 ### The video input: one block per camera

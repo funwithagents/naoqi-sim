@@ -1,35 +1,40 @@
+import io
 import json
+import re
 import socket
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
 import server
 
+from naoqi_sim.config import SPEECH_LANGUAGES, SpeechSettings
+
 # Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
 pytestmark = pytest.mark.container_code
+
+DOCKERFILE = (
+    Path(__file__).resolve().parent.parent / "docker" / "tts-engine" / "Dockerfile"
+)
 
 
 @pytest.fixture
 def synth(monkeypatch):
-    """Fake engines: a text item "<seconds>@<rate>" synthesizes that many seconds at that rate."""
+    """A fake Piper: a text item "<seconds>@<rate>" synthesizes that many seconds at that rate."""
     calls: list[tuple[str, str]] = []
 
-    def fake(engine):
-        def synthesize(text, lang, rate, pitch=100):
-            calls.append((engine, text))
-            seconds, sr = text.split("@")
-            return (
-                np.full(round(float(seconds) * int(sr)), 1000, dtype=np.int16),
-                int(sr),
-                engine,
-            )
+    def synthesize(text, lang, rate):
+        calls.append((lang, text))
+        seconds, sr = text.split("@")
+        return (
+            np.full(round(float(seconds) * int(sr)), 1000, dtype=np.int16),
+            int(sr),
+            server.VOICES[lang],
+        )
 
-        return synthesize
-
-    monkeypatch.setattr(server, "synth_piper", fake("piper"))
-    monkeypatch.setattr(server, "synth_espeak", fake("espeak"))
+    monkeypatch.setattr(server, "synth_piper", synthesize)
     return calls
 
 
@@ -45,13 +50,163 @@ def pause(ms):
     return {"type": "pause", "ms": ms}
 
 
+# -- languages and voices -----------------------------------------------------
+
+
+def test_the_engine_and_the_config_name_the_same_languages():
+    """The config refuses a language the engine has no voice for, so the two lists are one."""
+    assert tuple(server.VOICES) == SPEECH_LANGUAGES
+    assert server.DEFAULT_LANGUAGES == SpeechSettings().languages
+
+
+def test_the_image_bakes_the_default_languages_voices_from_the_pinned_release():
+    dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+    tag = re.search(r"^ARG VOICES_TAG=(\S+)", dockerfile, re.MULTILINE)
+    assert tag is not None and tag.group(1) == server.VOICES_TAG
+    baked = re.findall(
+        r"\b([a-z]{2}/[a-z]{2}_[A-Z]{2}/\S+/\S+/\S+-\S+-\S+)\b", dockerfile
+    )
+    assert sorted(baked) == sorted(
+        server.voice_path(server.VOICES[lang]) for lang in server.DEFAULT_LANGUAGES
+    )
+
+
+def test_a_voice_path_follows_piper_voices_layout():
+    assert server.voice_path("en_US-ljspeech-medium") == (
+        "en/en_US/ljspeech/medium/en_US-ljspeech-medium"
+    )
+    assert (
+        server.voice_path("pt_PT-tugão-medium")
+        == "pt/pt_PT/tugão/medium/pt_PT-tugão-medium"
+    )
+
+
+def test_installed_languages_come_from_the_environment_in_order():
+    assert server.installed_languages("German, English ,French") == (
+        "German",
+        "English",
+        "French",
+    )
+    assert server.installed_languages("") == server.DEFAULT_LANGUAGES
+    with pytest.raises(ValueError, match="no voice for Klingon"):
+        server.installed_languages("English,Klingon")
+
+
+@pytest.fixture
+def voice_roots(tmp_path, monkeypatch):
+    """An image root and a volume root for the voices, both empty."""
+    builtin, volume = tmp_path / "builtin", tmp_path / "volume"
+    monkeypatch.setattr(server, "BUILTIN_DIR", str(builtin))
+    monkeypatch.setattr(server, "VOICE_DIR", str(volume))
+    return builtin / server.VOICES_TAG, volume / server.VOICES_TAG
+
+
+def put_voice(root: Path, key: str) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"{key}.onnx").write_bytes(b"model")
+    (root / f"{key}.onnx.json").write_text("{}")
+    return root / f"{key}.onnx"
+
+
+@pytest.fixture
+def downloads(monkeypatch):
+    """A fake piper-voices: the URLs fetched, each answered with a small file."""
+    urls: list[str] = []
+
+    def urlopen(url, timeout=0):
+        urls.append(url)
+        return io.BytesIO(b"model" if url.endswith(".onnx") else b"{}")
+
+    monkeypatch.setattr(server.urllib.request, "urlopen", urlopen)
+    return urls
+
+
+def test_a_voice_in_the_image_is_never_fetched(voice_roots, downloads):
+    builtin, volume = voice_roots
+    onnx = put_voice(builtin, "fr_FR-siwis-medium")
+
+    assert server.ensure_voice("French") == str(onnx)
+    assert downloads == [] and not volume.exists()
+
+
+def test_a_voice_the_volume_has_is_reused(voice_roots, downloads):
+    _, volume = voice_roots
+    onnx = put_voice(volume, "de_DE-thorsten-medium")
+
+    assert server.ensure_voice("German") == str(onnx)
+    assert downloads == []
+
+
+def test_a_missing_voice_is_fetched_into_the_volume_from_the_pinned_release(
+    voice_roots, downloads
+):
+    _, volume = voice_roots
+
+    onnx = server.ensure_voice("Portuguese")
+
+    assert onnx == str(volume / "pt_PT-tugão-medium.onnx")
+    assert Path(onnx).read_bytes() == b"model"
+    assert json.loads(Path(onnx + ".json").read_text()) == {}
+    base = server.VOICES_URL + "pt/pt_PT/tug%C3%A3o/medium/pt_PT-tug%C3%A3o-medium"
+    assert downloads == [base + ".onnx.json", base + ".onnx"]  # the key percent-encoded
+    assert not list(volume.glob("*.part"))
+
+
+def test_a_download_that_dies_leaves_no_half_file(voice_roots, monkeypatch):
+    _, volume = voice_roots
+
+    class Dies(io.BytesIO):
+        def read(self, size=-1, /):
+            raise OSError("connection reset")
+
+    monkeypatch.setattr(server.urllib.request, "urlopen", lambda url, timeout=0: Dies())
+    with pytest.raises(OSError):
+        server.ensure_voice("Czech")
+
+    assert not (volume / "cs_CZ-jirka-medium.onnx.json").exists()
+    assert server.find_voice("cs_CZ-jirka-medium") is None
+
+
+def test_health_is_ok_once_every_installed_voice_is_loaded(monkeypatch):
+    monkeypatch.setattr(server, "LANGUAGES", ("English", "German"))
+    monkeypatch.setattr(server, "_voices", {"English": object()})
+    monkeypatch.setattr(server, "_ready", {"ok": False})
+
+    ok, reply = server.health()
+    assert not ok
+    assert reply["languages"] == {
+        "English": {"voice": "en_US-ljspeech-medium", "loaded": True},
+        "German": {"voice": "de_DE-thorsten-medium", "loaded": False},
+    }
+    assert reply["voices_tag"] == server.VOICES_TAG
+
+    server._voices["German"] = object()
+    server._ready["ok"] = True
+    ok, reply = server.health()
+    assert ok and reply["ok"] and reply["languages"]["German"]["loaded"]
+
+
+def test_a_say_in_a_language_not_installed_is_refused_unsynthesized(synth, monkeypatch):
+    monkeypatch.setattr(server, "LANGUAGES", ("English",))
+
+    with pytest.raises(server.UnknownLanguage, match="French"):
+        server.render({"language": "French", "items": [text("0.1@22050")]})
+    assert synth == []
+
+    _, _, _, used = server.render({"items": [text("0.1@22050")]})  # the first installed
+    assert used == "en_US-ljspeech-medium" and synth == [("English", "0.1@22050")]
+
+
+# -- rendering -----------------------------------------------------------------
+
+
 def test_marks_sit_at_the_audio_before_them(synth):
     pcm, sr, marks, used = server.render(
         {"items": [mark(1), text("1.0@22050"), mark(2), text("0.5@22050"), mark(3)]}
     )
 
     assert marks == {"1": 0.0, "2": 1.0, "3": 1.5}
-    assert (len(pcm), sr, used) == (int(1.5 * 22050), 22050, "piper")
+    assert (len(pcm), sr, used) == (int(1.5 * 22050), 22050, "en_US-ljspeech-medium")
 
 
 def test_pauses_add_exact_silence(synth):
@@ -80,7 +235,7 @@ def test_empty_text_items_are_skipped(synth):
         {"items": [text("   "), mark(1), text(""), text("0.3@16000")]}
     )
 
-    assert synth == [("piper", "0.3@16000")]
+    assert synth == [("English", "0.3@16000")]
     assert marks == {"1": 0.0}
     assert len(pcm) == int(0.3 * 16000)
 
@@ -93,11 +248,11 @@ def test_without_text_the_rate_is_22050(synth):
     assert (sr, len(pcm), marks) == (22050, 0, {})
 
 
-def test_the_request_selects_the_engine(synth):
-    _, _, _, used = server.render({"engine": "espeak", "items": [text("0.1@22050")]})
+def test_the_request_selects_the_language(synth):
+    _, _, _, used = server.render({"language": "French", "items": [text("0.1@22050")]})
 
-    assert used == "espeak"
-    assert synth == [("espeak", "0.1@22050")]
+    assert used == "fr_FR-siwis-medium"
+    assert synth == [("French", "0.1@22050")]
 
 
 @pytest.fixture(autouse=True)

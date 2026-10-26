@@ -4,8 +4,9 @@ The fake keeps its state in a JSON file: the images (ID and labels, set by `comp
 the environment's `NAOQI_SIM_VERSION` and `NAOQI_SIM_RECIPES`, the same ID for the same inputs, as
 Docker's cache), the containers and how the NAOqi one boots (`boot`: healthy, starting,
 unhealthy, exited) with the log it prints as it boots (`boot_log`: one more line each time
-`docker logs` reads it, the container `starting` until all are out), whether the tts engine answers, and whether Docker is up or a build fails.
-Every invocation is logged, and `up` records the `NAOQI_SIM_TTS_ENGINE` it was given. A NAOqi build
+`docker logs` reads it, the container `starting` until all are out), how the tts engine's
+container turns out (`tts_health`: healthy, unhealthy, exited), and whether Docker is up or a build fails.
+Every invocation is logged, and `up` records the `NAOQI_SIM_LANGUAGES` it was given. A NAOqi build
 reads its `image-data` context as compose does, from `$NAOQI_SIM_IMAGE_DATA/<version>`: it records the
 folder, and fails as BuildKit does when the folder is not there.
 """
@@ -77,10 +78,10 @@ FAKE_DOCKER = textwrap.dedent(
                     json.dump(state, f)
                 time.sleep(state["up_s"])
                 state = json.load(open(path))
-            state["up_tts_engine"] = os.environ.get("NAOQI_SIM_TTS_ENGINE")
+            state["up_languages"] = os.environ.get("NAOQI_SIM_LANGUAGES")
             for s in services:
                 name = state["services"][s]["container"]
-                state["containers"][name] = state["boot"] if s != "tts" else "running"
+                state["containers"][name] = state["boot"] if s != "tts" else state.get("tts_health", "healthy")
         elif verb == "logs":
             print("naoqi-sim-naoqi21  | [entrypoint] fake log line")
         elif verb == "ps":
@@ -106,8 +107,6 @@ FAKE_DOCKER = textwrap.dedent(
                "unhealthy": "running unhealthy", "exited": "exited ",
                "running": "running "}[status])
         done()
-    if args[0] == "exec":
-        done(0 if state.get("tts_answers", True) else 1)
     if args[0] == "logs":
         if "boot_log" in state:
             # One more line each time it is read: the entrypoint's on stdout, NAOqi's on stderr.

@@ -28,9 +28,35 @@ FALLBACK_SECONDS_PER_TOKEN = 0.3
 ENGINE_POLL_S = 0.02  # how often a say() waiting for the engine looks for a stop
 # Ids for the calls the front makes blocking (no task id): above any task id the broker hands out.
 FIRST_OWN_ID = 1000000
-# The installed languages: getAvailableLanguages, getSupportedLanguages and what setLanguage and
-# say(text, language) accept (the engine's voices, specs/container/tts-engine.md).
-LANGUAGES = ("English", "French")
+# NAOqi's languages, as its 2.8 "Supported languages" page lists them for ALTextToSpeech (2.1
+# is taken to be the same list): what getSupportedLanguages answers, whatever is installed, as
+# on a NAO (specs/services/speech.md, "Language").
+SUPPORTED_LANGUAGES = (
+    "Arabic", "Brazilian", "Chinese", "Czech", "Danish", "Dutch", "English", "Finnish", "French",
+    "German", "Greek", "Italian", "Japanese", "Korean", "Norwegian", "Polish", "Portuguese",
+    "Russian", "Spanish", "Swedish", "Turkish",
+)
+# What locale() answers for each: the language's own locale, as a NAO's "en_US".
+LOCALES = {
+    "Arabic": "ar_SA", "Brazilian": "pt_BR", "Chinese": "zh_CN", "Czech": "cs_CZ", "Danish": "da_DK",
+    "Dutch": "nl_NL", "English": "en_US", "Finnish": "fi_FI", "French": "fr_FR", "German": "de_DE",
+    "Greek": "el_GR", "Italian": "it_IT", "Japanese": "ja_JP", "Korean": "ko_KR", "Norwegian": "nb_NO",
+    "Polish": "pl_PL", "Portuguese": "pt_PT", "Russian": "ru_RU", "Spanish": "es_ES", "Swedish": "sv_SE",
+    "Turkish": "tr_TR",
+}
+DEFAULT_LANGUAGES = ("English", "French")
+
+
+def installed_languages(spec):
+    """The languages NAOQI_SIM_LANGUAGES names (comma-separated, the config's speech.languages,
+    whose voices the engine has), the defaults when empty; the first is the language at boot."""
+    names = [n.strip() for n in spec.split(",") if n.strip()]
+    return tuple(names) if names else DEFAULT_LANGUAGES
+
+
+# The installed languages, as a NAO's language packs: getAvailableLanguages, and what setLanguage
+# and say(text, language) accept (specs/services/speech.md, "Language").
+LANGUAGES = installed_languages(os.environ.get("NAOQI_SIM_LANGUAGES", ""))
 
 _TAG = re.compile(r"\\(pau|rspd|vct|mrk|mrkpause|vol|emph|bound|readmode|rst|tn)(?:=([^\\]*))?\\", re.I)
 
@@ -83,7 +109,7 @@ class Speaker(object):
         self.raise_event = raise_event
         self.signal = signal or (lambda *a: None)
         self.log = log or (lambda **f: None)
-        self.language = "English"
+        self.language = LANGUAGES[0]
         self.volume = 1.0
         self.state = {}
         self._own_id = FIRST_OWN_ID - 1
@@ -282,6 +308,10 @@ class Speaker(object):
         check_language("setLanguage", lang)  # the language and languageTTS stay as they were
         self.language = lang
         self.signal("languageTTS", lang)
+
+    def locale(self):
+        """The current language's locale (`en_US`), as a NAO's locale()."""
+        return LOCALES.get(self.language, "en_US")
 
     def set_parameter(self, name, value):
         n = name.lower()
