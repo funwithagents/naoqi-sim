@@ -275,6 +275,42 @@ def test_a_call_speaks_in_the_language_it_was_given_only():
     assert sp.language == "English"
 
 
+def test_the_installed_languages_come_from_the_environment_the_first_at_boot(
+    monkeypatch,
+):
+    assert core.installed_languages("German, French ,English") == (
+        "German",
+        "French",
+        "English",
+    )
+    assert core.installed_languages("") == ("English", "French")
+
+    monkeypatch.setattr(core, "LANGUAGES", ("French", "German"))
+    sp = FakeEngine(duration=0.0)
+    assert sp.language == "French"
+    sp.say("hallo", 1, "German")
+    assert sp.engine_calls[-1]["language"] == "German"
+    with pytest.raises(RuntimeError, match=r"'English'.*French, German"):
+        sp.set_language("English")
+
+
+def test_supported_languages_are_a_naos_whatever_is_installed():
+    assert len(core.SUPPORTED_LANGUAGES) == 21
+    assert set(core.LANGUAGES) < set(core.SUPPORTED_LANGUAGES)
+    assert {"Japanese", "Korean", "Arabic", "Brazilian"} < set(core.SUPPORTED_LANGUAGES)
+    assert set(core.LOCALES) == set(core.SUPPORTED_LANGUAGES)
+
+
+def test_locale_follows_the_language():
+    sp = FakeEngine(duration=0.0)
+    assert sp.locale() == "en_US"
+    sp.set_language("French")
+    assert sp.locale() == "fr_FR"
+    assert (
+        core.LOCALES["Brazilian"] == "pt_BR" and core.LOCALES["Portuguese"] == "pt_PT"
+    )
+
+
 def test_set_language_refuses_a_language_that_is_not_installed():
     sp = FakeEngine(duration=0.0)
     sp.set_language("French")

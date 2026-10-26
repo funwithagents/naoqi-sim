@@ -12,6 +12,7 @@ from naoqi_sim.config import (
     ConfigError,
     NaoqiSettings,
     NaoqiSimConfig,
+    SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
 )
@@ -30,7 +31,7 @@ def test_an_empty_config_is_the_defaults():
 
     assert config == NaoqiSimConfig()
     assert config.naoqi.version == "2.1" and config.naoqi.ready_timeout_s == 240.0
-    assert config.speech.engine == "piper"
+    assert config.speech.languages == ("English", "French")
     assert config.audio_output.mode == "play"
     assert config.audio_input.source == "none"
     assert config.video_input == VideoInputSettings(
@@ -55,7 +56,7 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
     config = NaoqiSimConfig.from_dict(
         {
             "naoqi": {"version": "2.8", "ready_timeout_s": 60},
-            "speech": {"engine": "espeak"},
+            "speech": {"languages": ["German", "English"]},
             "audio_output": {"mode": "record", "record": str(tmp_path / "out.wav")},
             "audio_input": {"source": "fake", "mono": "silence"},
             "video_input": {
@@ -78,7 +79,12 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
         ({"naoqi": {"version": 2.1}}, "naoqi.version"),
         ({"naoqi": {"ready_timeout_s": 0}}, "naoqi.ready_timeout_s"),
         ({"naoqi": {"ready_timeout_s": True}}, "naoqi.ready_timeout_s"),
-        ({"speech": {"engine": "festival"}}, "speech.engine"),
+        ({"speech": {"languages": []}}, "speech.languages"),
+        ({"speech": {"languages": "English"}}, "speech.languages"),
+        ({"speech": {"languages": ["English", 2]}}, "speech.languages"),
+        ({"speech": {"languages": ["English", "Klingon"]}}, "speech.languages"),
+        ({"speech": {"languages": ["Japanese"]}}, "speech.languages"),  # no voice
+        ({"speech": {"languages": ["French", "French"]}}, "speech.languages"),
         ({"audio_output": {"mode": "loud"}}, "audio_output.mode"),
         ({"audio_input": {"mono": "left"}}, "audio_input.mono"),
         ({"video_input": {"top": {"device": -1}}}, "video_input.top.device"),
@@ -201,6 +207,7 @@ def test_the_example_files_load():
         "ci.json",
         "default.json",
         "headless.json",
+        "languages.json",
         "mic.json",
         "webcam.json",
     ]
@@ -217,6 +224,8 @@ def test_the_example_files_load():
     assert ci.video_input.rates == {"top": 15, "bottom": 5}
     assert ci.audio_output.mode == "silent"
     assert ci.audio_input.source == "fake"
+    languages = NaoqiSimConfig.from_json_file(EXAMPLES / "languages.json")
+    assert languages.speech.languages == ("English", "French", "German")
     mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
     assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))
     webcam = NaoqiSimConfig.from_json_file(EXAMPLES / "webcam.json")
@@ -227,3 +236,13 @@ def test_the_example_files_load():
         ),
         viewer=ViewerSettings(cameras_display=True),
     )
+
+
+def test_the_installed_languages_keep_their_order_and_name_the_voiceless_ones():
+    config = NaoqiSimConfig.from_dict({"speech": {"languages": ["German", "English"]}})
+    assert config.speech.languages == ("German", "English")
+    assert config.to_dict()["speech"] == {"languages": ["German", "English"]}
+    assert SpeechSettings(languages=["French"]).languages == ("French",)  # type: ignore[arg-type]
+
+    error = error_for({"speech": {"languages": ["Japanese"]}})
+    assert "'Japanese' has no voice" in str(error) and "Czech" in str(error)

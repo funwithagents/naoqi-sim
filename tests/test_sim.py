@@ -140,7 +140,9 @@ def play(port: int, seconds: float = 0.2, rate: int = 8000) -> None:
 
 def test_start_runs_the_robot_and_stop_takes_it_down(env):
     sink = MemorySink()
-    config = NaoqiSimConfig(speech=SpeechSettings(engine="espeak"), viewer=HEADLESS)
+    config = NaoqiSimConfig(
+        speech=SpeechSettings(languages=("German", "English")), viewer=HEADLESS
+    )
     naoqisim = sim.NaoqiSim(config, sink=sink)
     assert not naoqisim.running
 
@@ -150,10 +152,10 @@ def test_start_runs_the_robot_and_stop_takes_it_down(env):
         assert env.checked == ["2.1"]
         [up] = [c for c in compose_calls(env) if " up " in c]
         assert "--profile 2.1" in up and up.endswith("up -d --no-build tts naoqi21")
-        assert env.read()["up_tts_engine"] == "espeak"
+        assert env.read()["up_languages"] == "German,English"
         assert env.read()["containers"] == {
             "naoqi-sim-naoqi21": "healthy",
-            "naoqi-sim-tts": "running",
+            "naoqi-sim-tts": "healthy",
         }
         # The audio output is up: what the containers stream reaches the sink.
         play(sim.AUDIO_OUTPUT_PORT)
@@ -444,6 +446,11 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
         "NAOqi 2.1 (sim): starting the containers (tts, naoqi21)",
         "NAOqi 2.1 (sim): containers up, waiting for NAOqi to start (up to 240 s)",
         "NAOqi 2.1 (sim): NAOqi started",
+        (
+            "NAOqi 2.1 (sim): waiting for the speech engine to load the voices of "
+            "English, French (a language's first use downloads its voice)"
+        ),
+        "NAOqi 2.1 (sim): speech engine ready",
         "NAOqi 2.1 (sim): starting naoqi-viewer (headless)",
         "NAOqi 2.1 (sim): starting the video input (top from render)",
         "NAOqi 2.1 (sim): starting the audio input (fake source)",

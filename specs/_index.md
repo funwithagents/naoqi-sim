@@ -26,7 +26,7 @@ The host-side front door: the config, the `NaoqiSim` object and the `naoqi-sim` 
 
 | Spec | Description | Status |
 |---|---|---|
-| [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with a block per head camera and its frame rate, viewer with its scene, variant and camera display), loaders (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embeddable as a block of another program's config, JSON | Implemented |
+| [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (the installed speech languages, `audio_output`, `audio_input`, `video_input` with a block per head camera and its frame rate, viewer with its scene, variant and camera display), loaders (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embeddable as a block of another program's config, JSON | Implemented |
 | [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, the start's progress logs, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and any Python caller | Implemented |
 | [cli.md](runtime/cli.md) | The `naoqi-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
 
@@ -40,7 +40,7 @@ The Docker images and what makes them a NAO: the NAOqi image, how override modul
 | [service-replacement.md](container/service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services (measured on both versions), the native relay for binary arguments, a C++ front for callers that stop by task id (`post`/`pCall`/`wait`/`stop(id)`, qi signals on it, measured on both versions) | Implemented |
 | [naoqi-fidelity.md](container/naoqi-fidelity.md) | How each image compares with a NAO of the same version: the modules it runs (the built-ins the 2.1 suite ships but does not load, added), and every difference of the desktop NAOqi, each classified as by design, patched, patchable (with its lever) or a limitation (with its workaround); the levers, cheapest first; a stand-in DCM to investigate | Implemented |
 | [status-service.md](container/status-service.md) | `NaoqiSim` status service: identity of a naoqi-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Implemented |
-| [tts-engine.md](container/tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the audio output as its `speech` stream | Implemented |
+| [tts-engine.md](container/tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, one voice per NAOqi language, the installed languages' voices in the image or fetched on first use into a volume, each voice's licence), streamed to the audio output as its `speech` stream | Implemented |
 
 ### NAOqi services: `services/`
 
@@ -48,7 +48,7 @@ The NAOqi services naoqi-sim replaces or adds, as Python 2.7 modules inside NAOq
 
 | Spec | Description | Status |
 |---|---|---|
-| [speech.md](services/speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock; a C++ front over the Python core so the Say and Animated Say boxes and `ALAnimatedSpeech` stop by task id, with 2.8's hidden signals on the front | Implemented |
+| [speech.md](services/speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock, NAOqi's supported languages and the installed ones from the config; a C++ front over the Python core so the Say and Animated Say boxes and `ALAnimatedSpeech` stop by task id, with 2.8's hidden signals on the front | Implemented |
 | [audio-device.md](services/audio-device.md) | `ALAudioDevice` replacement: registered directly, NAO's formats and methods, energy, per-subscriber delivery to `processRemote` through the native relay, as a binary | Implemented |
 | [audio-player.md](services/audio-player.md) | `ALAudioPlayer` replacement with a NAO's API (files, loaded files, task volume and pan, `stop(id)`, loops, sound sets, `playSine`), decoding WAV/OGG with the suite's libsndfile as a virtual robot does, one audio output stream per task mixed with speech; no shim; a C++ front for `post`/`wait`/`stop(id)` over a Python core | Implemented |
 

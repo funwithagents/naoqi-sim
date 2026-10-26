@@ -158,10 +158,21 @@ def test_the_boot_wait_relays_what_a_slow_boot_waits_for(docker, caplog):
     ]
 
 
-def test_a_silent_tts_engine_fails_the_verification(docker, image_data, monkeypatch):
+def test_a_tts_engine_that_cannot_load_its_voices_fails_the_verification(
+    docker, image_data, monkeypatch
+):
+    docker.set(tts_health="unhealthy")
+    with pytest.raises(BootError, match="tts engine did not start"):
+        build("2.1", image_data=image_data)
+    assert any(c.endswith(" down") for c in docker.calls)  # taken down all the same
+
+
+def test_a_tts_engine_still_loading_its_voices_times_out(
+    docker, image_data, monkeypatch
+):
     monkeypatch.setattr(docker_images, "TTS_TIMEOUT", 0.05)
-    docker.set(tts_answers=False)
-    with pytest.raises(BootError, match="tts engine"):
+    docker.set(tts_health="starting")
+    with pytest.raises(BootError, match="tts engine not healthy after"):
         build("2.1", image_data=image_data)
 
 

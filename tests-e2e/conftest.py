@@ -44,6 +44,7 @@ from naoqi_sim.config import (
     CameraSettings,
     NaoqiSettings,
     NaoqiSimConfig,
+    SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
 )
@@ -94,6 +95,9 @@ def live_config(version: str, **blocks) -> NaoqiSimConfig:
             bottom=CameraSettings(source="render", fps=5),
         ),
         "audio_input": AudioInputSettings(source="fake"),
+        # A third language, whose voice the image lacks: the engine fetches it into the voice
+        # volume on the first start (tts-engine.md, "Languages"); the defaults are in the image.
+        "speech": SpeechSettings(languages=("English", "French", "German")),
         **blocks,
     }
     return NaoqiSimConfig(**settings)

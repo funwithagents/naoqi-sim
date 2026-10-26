@@ -10,6 +10,7 @@ from naoqi_sim.audio_output import (
     WavSink,
 )
 from naoqi_sim.config import (
+    SPEECH_LANGUAGES,
     AudioInputSettings,
     AudioInputSource,
     AudioOutputMode,
@@ -19,7 +20,6 @@ from naoqi_sim.config import (
     NaoqiSettings,
     NaoqiSimConfig,
     NaoqiVersion,
-    SpeechEngine,
     SpeechSettings,
     VideoInputSettings,
     VideoInputSource,
@@ -51,6 +51,7 @@ from naoqi_sim.stack import (
 )
 
 __all__ = [
+    "SPEECH_LANGUAGES",
     "AudioInputSettings",
     "AudioInputSource",
     "AudioOutputMode",
@@ -81,7 +82,6 @@ __all__ = [
     "NullSink",
     "Playback",
     "PortInUseError",
-    "SpeechEngine",
     "SpeechSettings",
     "StackStatus",
     "Take",

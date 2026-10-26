@@ -140,13 +140,13 @@ Port 9559 is the only port, published on the host as `127.0.0.1:9559`.
 
 `docker/compose.yaml` has three services:
 
-- `tts`: the speech engine ([tts-engine.md](tts-engine.md)), native architecture.
+- `tts`: the speech engine ([tts-engine.md](tts-engine.md)), native architecture, with the named volume `piper-voices` at `/voices` for the voices of the languages its image lacks, and a healthcheck on its `/health` (healthy once every installed language's voice is loaded).
 - `naoqi21` (2.1, profile `2.1`).
 - `naoqi28` (2.8, profile `2.8`).
 
 Each NAOqi service sits behind its version's profile, with symmetric names (`naoqi21`/`naoqi28`, containers `naoqi-sim-naoqi21`/`naoqi-sim-naoqi28`), so a version is always named: `docker compose --profile 2.1 up -d tts naoqi21`. A bare `docker compose up` starts only `tts`.
 
-Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the engine at `http://tts:8080` (`NAOQI_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux): the host link at `NAOQI_SIM_HOST_LINK=host.docker.internal:9563` ([devices.md](../host/devices.md), "The host link").
+Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the engine at `http://tts:8080` (`NAOQI_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux): the host link at `NAOQI_SIM_HOST_LINK=host.docker.internal:9563` ([devices.md](../host/devices.md), "The host link"). `NAOQI_SIM_LANGUAGES` (the config's `speech.languages`, `English,French` when unset) goes to the `tts` service and the NAOqi one alike: the engine loads those voices, `ALTextToSpeech` lists them ([speech.md](../services/speech.md), "Language"). A NAOqi service depends on `tts` being started, not healthy: the two boot in parallel and `NaoqiSim.start()` waits for each ([api.md](../runtime/api.md), "Lifecycle"). `docker compose down` keeps the three volumes; `down -v` removes them, the voices included (the image's default voices remain).
 
 ### Entrypoint
 

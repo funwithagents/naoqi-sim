@@ -214,6 +214,37 @@ def test_set_language_emits_language_tts(nao):
     assert got == ["French", "English"]
 
 
+def test_the_languages_are_a_naos(nao):
+    """The config installs three languages; NAOqi's own list is what a NAO supports; locale
+    follows the language."""
+    tts = nao.service("ALTextToSpeech")
+    assert tts.getAvailableLanguages() == ["English", "French", "German"]
+    supported = tts.getSupportedLanguages()
+    assert len(supported) == 21
+    assert {"English", "French", "German", "Japanese", "Arabic", "Brazilian"} < set(
+        supported
+    )
+    assert tts.getLanguage() == "English" and tts.locale() == "en_US"
+    try:
+        tts.setLanguage("German")
+        assert tts.locale() == "de_DE"
+    finally:
+        tts.setLanguage("English")
+
+
+def test_a_language_the_image_lacks_speaks_with_its_fetched_voice(nao):
+    """German's voice is not in the tts image: the engine fetched it into the voice volume
+    when the stack started, and it speaks like the baked ones."""
+    tts = nao.service("ALTextToSpeech")
+    mark = time.monotonic()
+    tts.say("Hallo, ich heiße Nao und ich spreche Deutsch.", "German")
+    playback = nao.sink.wait_for(lambda p: p.started_at >= mark)
+
+    assert playback.duration_s > 1.5  # real speech, not the fallback clock
+    assert not playback.interrupted
+    assert tts.getLanguage() == "English"  # for that call only
+
+
 def test_a_language_that_is_not_installed_is_refused(nao):
     tts = nao.service("ALTextToSpeech")
     tts.setLanguage("French")
