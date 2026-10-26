@@ -3,6 +3,7 @@ builds (checked by the installed naoqi-viewer itself), the missing extra, and th
 the user. No viewer process is launched: `NaoqiViewer` is replaced where a test needs one."""
 
 import logging
+import math
 import sys
 import threading
 
@@ -150,6 +151,61 @@ def test_camera_frames_come_from_the_viewer_until_it_is_closed(fake_viewer):
     fake_viewer[0].close()  # the user closes the window
     with pytest.raises(viewer.WorldClosed):
         world.camera_frame("top", 640, 480)
+
+
+class FakeProps:
+    """naoqi-viewer's PropsClient, recording what it is asked."""
+
+    def __init__(self):
+        self.calls: list[tuple] = []
+
+    def spawn(self, kind, pos, *, quat=None, **options):
+        self.calls.append(("spawn", kind, pos, quat, options))
+        return "state"
+
+    def place(self, name, pos, quat, *, duration):
+        self.calls.append(("place", name, pos, quat, duration))
+        return "state"
+
+
+def test_the_robot_frame_is_turned_and_moved_to_the_robots_odometry():
+    pos, quat = viewer.robot_to_world((1.0, 2.0, math.pi / 2), (1.5, 0.0, 0.5), None)
+    assert pos == pytest.approx((1.0, 3.5, 0.5))  # 1.5 m ahead of a robot facing +y
+    assert quat is None
+    pos, quat = viewer.robot_to_world((0.0, 0.0, -0.133), (1.0, 0.3, 0.4), (1, 0, 0, 0))
+    c, s = math.cos(-0.133), math.sin(-0.133)
+    assert pos == pytest.approx((c - 0.3 * s, s + 0.3 * c, 0.4))
+    assert quat == pytest.approx((math.cos(-0.0665), 0, 0, math.sin(-0.0665)))
+
+
+def test_sim_props_pass_world_positions_through_and_convert_robot_ones():
+    props = FakeProps()
+    reads: list[int] = []
+
+    def robot_position():
+        reads.append(1)
+        return (0.5, 0.0, math.pi)
+
+    sim_props = viewer.SimProps(props, robot_position)
+    sim_props.spawn("object", (1.5, 0.0, 0.5), size=0.1)
+    # The scene's frame: passed as given, an omitted rotation left to the viewer's identity.
+    assert props.calls[-1] == ("spawn", "object", (1.5, 0.0, 0.5), None, {"size": 0.1})
+    assert reads == []  # the world frame never reads the robot
+
+    sim_props.spawn("face", (1.0, 0.0, 0.5), frame="robot", name="face_2")
+    _, kind, pos, quat, options = props.calls[-1]
+    assert (kind, options) == ("face", {"name": "face_2"})
+    assert pos == pytest.approx((-0.5, 0.0, 0.5))  # ahead of a robot facing -x
+    # No rotation: the robot frame's identity, turned by the robot's heading (a yaw of pi), so
+    # the face's picture, toward -x in the robot's frame, shows back toward the robot.
+    assert quat == pytest.approx((0.0, 0.0, 0.0, 1.0), abs=1e-12)
+
+    sim_props.place("face_2", (2.0, 0.0, 0.5), frame="robot", duration=1.5)
+    _, name, pos, quat, duration = props.calls[-1]
+    assert (name, duration) == ("face_2", 1.5) and pos == pytest.approx((-1.5, 0, 0.5))
+    assert quat is None  # a move keeps the prop's rotation
+    with pytest.raises(ValueError, match="frame"):
+        sim_props.spawn("object", (1, 0, 0), frame="head")  # type: ignore[arg-type]
 
 
 def test_the_window_shows_the_people_when_asked():

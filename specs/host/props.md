@@ -24,7 +24,7 @@ Props are the first of the test helpers discussed on Oct 18, 2026. Two others ar
 
 ### `sim.props`
 
-A running `NaoqiSim` whose config runs the viewer ([viewer.md](viewer.md), "Which viewer runs") has `sim.props`: naoqi-viewer's own `PropsClient`, handed out by the simulated world (`SimWorld.props` in `src/naoqi_sim/viewer.py`) with nothing added:
+A running `NaoqiSim` whose config runs the viewer ([viewer.md](viewer.md), "Which viewer runs") has `sim.props`, naoqi-viewer's `PropsClient` wrapped by the simulated world (`SimProps` in `src/naoqi_sim/viewer.py`) to add NAOqi's frames:
 
 ```python
 ball = sim.props.spawn(
@@ -32,7 +32,7 @@ ball = sim.props.spawn(
 )  # a red sphere 1.5 m ahead
 face = sim.props.spawn(
     "face", (1.0, 0.3, 0.5), frame="robot"
-)  # face_1, looking at the robot
+)  # face_1, its picture back along the robot's axis
 sim.props.place(
     face.name, (1.0, -0.3, 0.5), duration=2.0, frame="robot"
 )  # walks across in 2 s
@@ -41,16 +41,22 @@ sim.props.despawn(face.name)
 sim.props.clear()
 ```
 
-- **naoqi-viewer's five calls** (`list`, `spawn`, `place`, `despawn`, `clear`), with its arguments (`frame` among them), kinds (`face`, `object`), shapes, sizes, colours, durations, pool and errors: `PropState` and `PropError` are naoqi-viewer's, re-exported by `naoqi_sim` for callers that want to catch or type them. naoqi-sim adds no prop of its own and keeps no state: `list()` is what the viewer answers.
+- **naoqi-viewer's five calls** (`list`, `spawn`, `place`, `despawn`, `clear`), with its arguments plus `frame` (below), kinds (`face`, `object`), shapes, sizes, colours, durations, pool and errors: `PropState` and `PropError` are naoqi-viewer's, re-exported by `naoqi_sim` for callers that want to catch or type them. naoqi-sim adds no prop of its own and keeps no state: `list()` is what the viewer answers.
 - **Not running, or no viewer**: `sim.props` raises `NotRunningError` before `start()` and after `stop()`, and `NaoqiSimError` when the config runs no viewer (`viewer.headless` with no camera on `render`), saying what to change. A window closed by the user makes the next call raise naoqi-viewer's `ViewerClosed`, as the video input sees it ([viewer.md](viewer.md), "Window closed").
 - **Calls are synchronous**, as naoqi-viewer's API is; a test calls them from its thread, and an `asyncio` caller wraps them in `asyncio.to_thread` as `NaoqiSim` does for the viewer.
 
 ### Frames
 
-Positions and orientations are in the **scene's frame** by default (`frame="world"`), which naoqi-viewer identifies with NAOqi's `FRAME_WORLD`: it places the robot at `ALMotion.getTransform("Torso", FRAME_WORLD, True)`. That pose is odometry, about -0.13 rad of heading at boot on both versions and more after gestures ([viewer.md](viewer.md), "In the live tier and CI"), so "1.5 m along x" is not 1.5 m ahead of the robot. `frame="robot"` gives them in NAOqi's `FRAME_ROBOT` instead: origin on the floor at the middle of the feet, x ahead, y to the robot's left.
+naoqi-viewer's props are geometry only: a pose in the scene, a position and a rotation, identity by default, with a face's identity showing its picture toward -x (naoqi-viewer's `props.md`). The scene's frame is NAOqi's `FRAME_WORLD`: the viewer places the robot at `ALMotion.getTransform("Torso", FRAME_WORLD, True)`. That pose is odometry, about -0.13 rad of heading at boot on both versions and more after gestures ([viewer.md](viewer.md), "In the live tier and CI"), so "1.5 m along x" is not 1.5 m ahead of the robot. NAOqi's frames are naoqi-sim's to manage, so `spawn` and `place` take `frame`:
 
-- **The frame is naoqi-viewer's** (its `props.md`, "Frames"): it computes `FRAME_ROBOT` from the feet it draws, as NAOqi computes `getRobotPosition` from its own, and converts. naoqi-sim passes `frame` through like every other argument, and reads nothing from NAOqi for it.
-- The conversion is done once, when the call is answered; a robot that walks afterwards leaves the prop where it was, as a real object stays. The `PropState` returned, like `list()`, is always in the scene's frame. A face's default orientation (looking at the robot) is the viewer's too, in either frame.
+| `frame` | `pos` and `quat` are in | How |
+| --- | --- | --- |
+| `"world"` (default) | The scene's frame, NAOqi's `FRAME_WORLD` | Passed through; an omitted rotation is the viewer's identity |
+| `"robot"` | NAOqi's `FRAME_ROBOT`: origin on the floor at the middle of the feet, x ahead, y to the robot's left | `ALMotion.getRobotPosition(True)` gives `[x, y, theta]` of `FRAME_ROBOT` in `FRAME_WORLD`; the position is rotated by `theta` and moved by `x, y`, the rotation turned by `theta` about the vertical, heights unchanged (both frames sit on the floor), then passed to the viewer |
+
+- **An omitted rotation at a robot-frame `spawn`** is the robot frame's identity, turned by `theta` like any other: an object keeps the robot's axes, and a face shows its picture toward the robot frame's -x, back along the robot's axis. A face at `(1.0, 0, z)` then faces the robot squarely; one at `(1.0, 0.3, z)` looks parallel to the robot's axis, about 17° off from facing it, still a frontal face for a detector. A test that wants it turned exactly toward the robot gives the yaw. At `place`, an omitted rotation keeps the prop's, as in the viewer.
+- The conversion is done at the call, with the robot's pose at that moment; a robot that walks afterwards leaves the prop where it was, as a real object stays. The `PropState` returned, like `list()`, is always in the scene's frame.
+- `sim.props` reads `ALMotion` through naoqi-sim's own qi session (`stack.connect`, one attempt, opened at the first robot-frame call and closed with the world), so a test needs no session of its own to place a prop relative to the robot.
 
 ### Where to put things
 
@@ -66,7 +72,7 @@ The robot's head height varies with the posture (`Crouch` is 0.1 m lower than `S
 
 ### In the live tier and CI
 
-The live tier's scene becomes naoqi-viewer's `empty` scene, and each test spawns what it needs and `clear()`s after itself (a fixture): the red pillar of `tests-e2e/scenes/camera-target.xml` and the scene file go, replaced by a red ball (radius 0.1 m) spawned on the floor 1.5 m ahead in `FRAME_ROBOT`, so the pinhole tests of [video-input.md](video-input.md) aim at the world position `spawn` returns: the top camera sees the ball's centre on the column its pose predicts as the head turns, and with the head raised the bottom camera sees it on the row its pose predicts while the top camera looks over it. naoqi-sim does not test the props themselves: `sim.props` is naoqi-viewer's client as is, and what a spawned face or object looks like, upright, unmirrored, where its frame puts it, is naoqi-viewer's fast and live tiers' to check (its `props.md`, "Testing"). The ball tests use a prop only to give the cameras something to look at. The props run headless on CI's software renderer like the rest of the camera loop ([ci.md](../testing/ci.md)).
+The live tier's scene becomes naoqi-viewer's `empty` scene, and each test spawns what it needs and `clear()`s after itself (a fixture): the red pillar of `tests-e2e/scenes/camera-target.xml` and the scene file go, replaced by a red ball (radius 0.1 m) spawned on the floor 1.5 m ahead in `FRAME_ROBOT`, so the pinhole tests of [video-input.md](video-input.md) aim at the world position `spawn` returns: the top camera sees the ball's centre on the column its pose predicts as the head turns, and with the head raised the bottom camera sees it on the row its pose predicts while the top camera looks over it. naoqi-sim does not test the props themselves: what a spawned face or object looks like, upright, unmirrored, where its pose puts it, is naoqi-viewer's fast and live tiers' to check; naoqi-sim's fast tier checks its own part, the robot-frame conversion (its `props.md`, "Testing"). The ball tests use a prop only to give the cameras something to look at. The props run headless on CI's software renderer like the rest of the camera loop ([ci.md](../testing/ci.md)).
 
 ## Open questions
 

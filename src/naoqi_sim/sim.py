@@ -35,7 +35,7 @@ from naoqi_sim.stack import (
     NaoqiSimStatus,
 )
 from naoqi_sim.video_input import FrameSource, RenderSource, VideoInput
-from naoqi_sim.viewer import SimWorld, needs_viewer, viewer_config
+from naoqi_sim.viewer import SimProps, SimWorld, needs_viewer, viewer_config
 from naoqi_sim.webcam import Webcam, check_webcam
 
 log = logging.getLogger(__name__)
@@ -117,9 +117,9 @@ class NaoqiSim:
         return source
 
     @property
-    def props(self) -> Any:
+    def props(self) -> SimProps:
         """The props a test puts in the simulated world (specs/host/props.md): naoqi-viewer's
-        `PropsClient`, positions in the scene's frame or the robot's (`frame="robot"`)."""
+        calls, with poses in the scene's frame or the robot's (`frame="robot"`)."""
         self.url  # noqa: B018  (raises NotRunningError)
         if self._world is None:
             raise NaoqiSimError(
