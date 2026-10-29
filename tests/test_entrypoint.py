@@ -56,6 +56,8 @@ FAKE_QICLI = textwrap.dedent(
             sys.exit(0)
         sys.exit(1 if args[1] in down else 0)
     target = args[1]
+    if target.split(".")[0] in down:  # a call on a service that did not load
+        sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
     if target.startswith("NaoqiSim."):
         if "NaoqiSim" in down:
             sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
@@ -159,6 +161,18 @@ MODULES = {
     "naoqi_sim_perception_stubs_qiservice",
 }
 URLS = {"2.1": "--qi-url tcp://127.0.0.1:9559", "2.8": "--qi-url tcp://127.0.0.1:9558"}
+# The vision modules put in 2D, as on a real NAO (no depth camera), before boot completes.
+VISION_2D = {
+    "2.1": ["ALFastPersonTracking", "ALFindPersonHead", "ALMovementDetection"],
+    "2.8": ["_ALFastPersonTracking", "_ALFindPersonHead", "ALMovementDetection"],
+}
+
+
+def expected_calls(version: str) -> list[str]:
+    url = URLS[version]
+    return [f"call {m}._setDetectionMode 2D {url}" for m in VISION_2D[version]] + [
+        f"call NaoqiSim.setReady {url}"
+    ]
 
 
 class Fakes:
@@ -269,12 +283,13 @@ def test_sequence_on_2_1(fakes):
 
     url = URLS["2.1"]
     # Our modules loaded inside NAOqi's boot: nothing is exited, launched or loaded by a call.
-    assert calls_only(fakes) == [f"call NaoqiSim.setReady {url}"]
+    assert calls_only(fakes) == expected_calls("2.1")
     # The service list is polled until stable (1 + 3 polls), then every replaced, added and
     # added built-in name is checked, right before setReady.
     checked = REPLACED + ADDED["2.1"] + BUILTINS_21
     assert f"NAOqi ready after 4 polls, {len(SERVICES.split())} services" in ep.output()
-    assert fakes.calls()[-len(checked) - 1 : -1] == [
+    # the names checked, then the 2D calls and setReady
+    assert fakes.calls()[-len(checked) - 4 : -4] == [
         f"info {name} {url}" for name in checked
     ]
     assert fakes.naoqi_bin("args").startswith("-b 0.0.0.0 -p 9559 --autoload-file ")
@@ -297,9 +312,10 @@ def test_sequence_on_2_8(fakes):
     ep.stop()
 
     url = URLS["2.8"]
-    assert calls_only(fakes) == [f"call NaoqiSim.setReady {url}"]
+    assert calls_only(fakes) == expected_calls("2.8")
     checked = REPLACED + ADDED["2.8"] + KEPT_28
-    assert fakes.calls()[-len(checked) - 1 : -1] == [
+    # the names checked, then the 2D calls and setReady
+    assert fakes.calls()[-len(checked) - 4 : -4] == [
         f"info {name} {url}" for name in checked
     ]
     assert fakes.naoqi_bin("args") == (
@@ -467,3 +483,12 @@ def test_healthcheck_follows_the_ready_flag(fakes, style):
     (fakes.dir / "down").write_text("NaoqiSim")
     assert run() == 1  # the service is gone
     assert all("tcp://127.0.0.1:9559" in c for c in fakes.calls())
+
+
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+def test_fails_when_a_vision_module_cannot_be_put_in_2d(fakes, version):
+    fakes.down("ALMovementDetection")
+    ep = Entrypoint(fakes, version)
+    assert ep.wait_exit() == 1
+    assert "ALMovementDetection._setDetectionMode 2D failed" in ep.output()
+    assert not [c for c in fakes.calls() if "setReady" in c]

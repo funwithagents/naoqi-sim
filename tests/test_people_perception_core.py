@@ -122,11 +122,9 @@ def test_a_face_becomes_a_person_at_the_distance_its_size_gives_in_the_three_fra
         [1.0, 0.0, CAMERA_Z - 0.3]
     )
     assert m.person(1, "PositionInWorldFrame") == pytest.approx([3.0, 0.0, CAMERA_Z])
-    assert m.person(1, "Distance") == pytest.approx(math.hypot(1.0, CAMERA_Z))
-    yaw, pitch = m.person(1, "AnglesYawPitch")
-    assert yaw == pytest.approx(0.0) and pitch == pytest.approx(
-        -math.atan2(CAMERA_Z, 1.0)
-    )
+    # from the camera, as a NAO measures them: the face's distance and its angles in the image
+    assert m.person(1, "Distance") == pytest.approx(1.0)
+    assert m.person(1, "AnglesYawPitch") == pytest.approx([0.0, 0.0])
     assert m.person(1, "IsVisible") is True and m.person(1, "IsFaceDetected") is True
     assert m.person(1, "NotSeenSince") == 0.0 and m.person(1, "PresentSince") == 0.0
     assert m.person(1, "RealHeight") == pytest.approx(CAMERA_Z + core.HEAD_TOP)
@@ -160,11 +158,7 @@ def test_the_angles_place_the_person_to_the_left_and_the_events_follow_the_keys(
     )[0][1]
     assert stamp == [100, 200000] and camera == 0 and pose_robot == [0.1] * 6
     ((pid, distance, _, yaw),) = people
-    assert (
-        pid == 1
-        and distance == pytest.approx(math.hypot(2.0, CAMERA_Z))
-        and yaw == pytest.approx(0.3)
-    )
+    assert pid == 1 and distance == pytest.approx(2.0) and yaw == pytest.approx(0.3)
     assert rig.signals == [("justArrived", 1)]
 
 
@@ -213,9 +207,8 @@ def test_a_face_keeps_its_person_while_it_moves_a_little_and_two_faces_are_two_p
     assert rig.memory.person(3, "PositionInWorldFrame") == pytest.approx(
         before, abs=0.02
     )
-    assert rig.memory.person(3, "AnglesYawPitch")[0] == pytest.approx(
-        -0.4
-    )  # the robot's frame, unchanged
+    # the angles are the face's in the image (camera-relative): they follow the turned head
+    assert rig.memory.person(3, "AnglesYawPitch")[0] == pytest.approx(-0.7)
     assert [v for k, v in rig.memory.events("PeoplePerception/JustArrived")] == [
         1,
         2,
@@ -285,7 +278,7 @@ def test_reset_population_forgets_everyone_and_face_detection_off_sees_nobody():
         k for k in m.data if "/Person/" in k
     ]
     assert m.events("PeoplePerception/PopulationReset") == [
-        ("PeoplePerception/PopulationReset", 0)
+        ("PeoplePerception/PopulationReset", None)
     ]
     assert ("populationReset",) in rig.signals
     rig.population.set("FaceDetectionEnabled", False)
@@ -337,3 +330,60 @@ def test_the_table_serves_every_setting_and_the_hidden_methods():
     s._setDetectionMode("fast")
     assert s._getDetectionMode() == "fast"
     assert "ALPeoplePerception" in s.whoami()
+
+
+def test_the_last_subscriber_leaving_clears_the_population_as_a_nao_does():
+    """Measured on a real NAO 2.1: when the last subscriber leaves, the population is cleared at
+    once and PopulationReset raised (no JustLeft), even when it was already empty."""
+    rig = Rig()
+    rig.see([face(), face(alpha=0.5)])
+    rig.population.subscribe("client", 500, 0.0)
+    rig.population.unsubscribe(
+        "ALBasicAwareness"
+    )  # another subscriber left: nothing happens
+    m = rig.memory
+    assert m.data["PeoplePerception/PeopleList"] == [1, 2] and not m.events(
+        "PeoplePerception/PopulationReset"
+    )
+    rig.population.unsubscribe("client")
+    assert (
+        m.data["PeoplePerception/PeopleList"] == []
+        and m.data["PeoplePerception/VisiblePeopleList"] == []
+    )
+    assert not [k for k in m.data if "/Person/" in k]
+    assert m.events("PeoplePerception/PopulationReset") == [
+        ("PeoplePerception/PopulationReset", None)
+    ]
+    assert (
+        m.events("PeoplePerception/JustLeft") == []
+        and ("populationReset",) in rig.signals
+    )
+    rig.population.subscribe("again", 200, 0.0)
+    rig.population.unsubscribe("again")  # empty, and still announced
+    assert len(m.events("PeoplePerception/PopulationReset")) == 2
+
+
+def test_paused_the_timers_still_run():
+    """Paused, no detection comes: the person turns invisible after 2 s and leaves after 10 s,
+    rather than staying "visible" forever (a paused NAO's behaviour is not measured)."""
+    rig = Rig()
+    rig.see([face()])
+    rig.population.pause(True)
+    assert rig.population.wants() is None
+    m = rig.memory
+    rig.t += 1.0
+    rig.population.on_idle()
+    assert m.data["PeoplePerception/VisiblePeopleList"] == [1]
+    events = len(m.events())
+    rig.population.on_idle()
+    assert len(m.events()) == events  # nothing changed: nothing raised
+    rig.t += 1.5  # 2.5 s unseen
+    rig.population.on_idle()
+    assert (
+        m.data["PeoplePerception/VisiblePeopleList"] == []
+        and m.person(1, "IsVisible") is False
+    )
+    rig.t += 8.0  # 10.5 s
+    rig.population.on_idle()
+    assert m.data["PeoplePerception/PeopleList"] == []
+    assert m.events("PeoplePerception/JustLeft") == [("PeoplePerception/JustLeft", 1)]

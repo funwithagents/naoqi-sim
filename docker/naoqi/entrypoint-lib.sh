@@ -134,6 +134,18 @@ check_answer() {
   done
 }
 
+# vision_2d <services...>: puts each vision module's detection in 2D, as on a real NAO, which has no
+# depth camera (bobby: fast person tracking, find person head, people perception and movement
+# detection all 2D). The desktop's virtual robot declares one (camera index 2) that nothing feeds,
+# so in their default 3D mode the trackers never find anyone and ALBasicAwareness, after its first
+# look, never follows a person (specs/container/naoqi-fidelity.md).
+vision_2d() {
+  local m
+  for m in "$@"; do
+    call "$m._setDetectionMode" 2D >/dev/null 2>&1 || fail "$m._setDetectionMode 2D failed"
+  done
+}
+
 # mark_ready: the whole sequence succeeded. Then wait on naoqi-bin (signals are forwarded to it).
 mark_ready() {
   call NaoqiSim.setReady >/dev/null 2>&1 || fail "NaoqiSim.setReady failed: the status module is not loaded"
