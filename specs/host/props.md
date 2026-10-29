@@ -14,7 +14,7 @@ tests:
 
 ## Purpose
 
-What a test puts in front of the simulated robot: a face for a client's detector to find, a red ball for the camera to see where the robot's pose says it is. The simulated world ([viewer.md](viewer.md)) is naoqi-viewer's, and so are the props: naoqi-viewer appends a pool of hidden bodies to every sim-mode scene and shows, moves and hides them on request (naoqi-viewer's `specs/props.md`). naoqi-sim's part is small: a running `NaoqiSim` exposes them as `sim.props`, one call per naoqi-viewer call, and adds what only naoqi-sim knows, the robot's frames. The window and the rendered head cameras are the same model, so what the API says is what the camera sees, at the next frame.
+What a test puts in front of the simulated robot: a face for the robot's own face detection to find ([face-detection.md](../services/face-detection.md); before Oct 29, 2026, for a client's detector), a red ball for the camera to see where the robot's pose says it is. The simulated world ([viewer.md](viewer.md)) is naoqi-viewer's, and so are the props: naoqi-viewer appends a pool of hidden bodies to every sim-mode scene and shows, moves and hides them on request (naoqi-viewer's `specs/props.md`). naoqi-sim's part is small: a running `NaoqiSim` exposes them as `sim.props`, one call per naoqi-viewer call, and adds what only naoqi-sim knows, the robot's frames. The window and the rendered head cameras are the same model, so what the API says is what the camera sees, at the next frame.
 
 A prop is **sim only**: a real NAO's cameras cannot see a MuJoCo body, and a naoqi-sim without a viewer has no world to put it in. A test that needs a prop runs against a `NaoqiSim` whose config runs the viewer, as the live tier does, and nothing in naoqi-sim pretends otherwise.
 
@@ -64,7 +64,7 @@ For a standing NAO (`StandInit`), what the head cameras see, from naoqi-viewer's
 
 | Prop | In `FRAME_ROBOT` | In the top camera, head straight |
 | --- | --- | --- |
-| A face to detect | `(1.0, y, 0.5)`, `|y|` up to 0.4 | Centred in height; the face itself about 70 pixels tall at VGA, 35 at 2 m |
+| A face to detect | `(1.0, y, 0.5)`, `|y|` up to 0.4 | Centred in height; the face itself about 70 pixels tall at VGA, 35 at 2 m, with naoqi-viewer's first portraits (a 0.20 × 0.25 m plane, the face about half of it). Decided Oct 29, 2026: the plane grows so the pictured face is life-size, about 0.25 m tall, hence about 135 pixels at 1 m and 70 at 2 m, so that `ALPeoplePerception`'s distance from the face's size reads 1 m for a prop at 1 m ([people-perception.md](../services/people-perception.md)); naoqi-viewer's commit `8d696b8`, the pin since ([viewer.md](viewer.md), "Dependency") |
 | An object to see | `(1.5, 0, 0.5)`, a sphere of radius 0.1 | About 36 pixels across, a little below the centre row |
 | An object for the bottom camera | `(0.6, 0, 0.1)` on the floor | In the bottom camera's view, out of the top's |
 
@@ -78,4 +78,4 @@ The live tier's scene becomes naoqi-viewer's `empty` scene, and each test spawns
 
 1. **Props from the config.** `naoqi-sim run` has no way to put a face or an object in the scene without code; a `viewer.props` list in the config (kind, position, frame) spawned at start would give a demo something to look at. Deferred until a user wants it; the `table` scene serves meanwhile.
 2. **The robot at the scene's origin**, which would make the two frames coincide at boot: a naoqi-viewer change (its `props.md`, open question 1). The `robot` frame is the answer until then.
-3. **A people injector.** A face prop is only a picture; nothing publishes it in ALMemory, so `ALBasicAwareness` ignores it until a client's detector publishes the people-perception contract ([_overview.md](../_overview.md), "Perception and speech recognition", which proved the built-ins react to it). An injector that writes those keys, from a prop's true pose or from positions a test gives, and more generally fake stimuli (located sounds), is deferred: a client will want the same on a real robot, so it is not naoqi-sim's alone.
+3. ~~**A people injector.**~~ Resolved Oct 29, 2026, the other way: a face prop becomes a person through naoqi-sim's own face detection and people perception, so `ALBasicAwareness` looks at it with no injector ([people-perception.md](../services/people-perception.md)). Fake stimuli that are not faces (located sounds) stay deferred ([_overview.md](../_overview.md), "Open questions and risks").

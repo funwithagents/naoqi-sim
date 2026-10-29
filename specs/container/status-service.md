@@ -56,8 +56,10 @@ The module writes these at load. All values are plain strings except `NaoqiSim/R
 | `NaoqiSim/Camera/Source` | `none` | The video input: the two cameras' keys summarized, for `status()` and a client that only wants to know whether the robot sees: `none` when no camera is fed, the one source feeding them, `mixed` when they differ |
 | `NaoqiSim/Audio/Source` | `none` | The audio input (`fake`, `mic`), [audio-input.md](../host/audio-input.md) |
 | `NaoqiSim/Audio/Channels` | `none` | The audio input's mono policy (`duplicate`, `silence`), [audio-input.md](../host/audio-input.md) |
+| `NaoqiSim/Perception/Source` | `engine` when `NAOQI_SIM_PERCEPTION_URL` names the perception engine, `none` when it is empty (`perception.enabled = false`) | Nobody: the face module writes it at load ([face-detection.md](../services/face-detection.md), [perception-engine.md](perception-engine.md)) |
+| `NaoqiSim/Perception/Stubs` | The API-only stubs loaded, comma-separated (`ALEngagementZones,ALGazeAnalysis,...`) | Nobody: the stubs module writes it at load ([perception-stubs.md](../services/perception-stubs.md)) |
 
-- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio). The device specs own the other values and may add keys under the same prefixes; the host writes them as an ordinary qi client, as the overview's "Host services" prescribes.
+- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio), or, for the perception key, no engine behind the modules (they answer and find nobody). The device specs own the other values and may add keys under the same prefixes; the host writes them as an ordinary qi client, as the overview's "Host services" prescribes. The two perception keys are written inside the container by the modules themselves, as the entrypoint's environment says. `status()` reads `NaoqiSim/Perception/Source` as `perception_source` ([api.md](../runtime/api.md)). `NaoqiSim/Perception/Source` existed before Oct 9, 2026 as a host device's key and was dropped when perception was left to the clients; it is back with another meaning.
 
 ### Readiness
 

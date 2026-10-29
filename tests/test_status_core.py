@@ -40,6 +40,8 @@ def test_publishes_versions_and_idle_sources_at_load():
         "NaoqiSim/Camera/Bottom/Source": "none",
         "NaoqiSim/Audio/Source": "none",
         "NaoqiSim/Audio/Channels": "none",
+        "NaoqiSim/Perception/Source": "none",
+        "NaoqiSim/Perception/Stubs": "",
     }
 
 

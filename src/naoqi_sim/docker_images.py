@@ -1,9 +1,10 @@
 """The Docker images a simulated NAO runs on: fetched, built and verified once, checked at every start.
 
 `fetch_and_build_images` does everything slow or downloaded, per NAOqi version: it fetches the
-image data (`suite.fetch`), builds the version's NAOqi image and the `tts` image with the
-installed naoqi-sim version and the digest of the `docker/` recipes as labels, then boots them until the NAOqi container
-is healthy and the `tts` engine answers, and takes them down. Only the image IDs that booted are
+image data (`suite.fetch`), builds the version's NAOqi image, the `tts` image and the
+`perception` image with the installed naoqi-sim version and the digest of the `docker/` recipes
+as labels, then boots them until the NAOqi container is healthy and the two engines answer, and
+takes them down. Only the image IDs that booted are
 recorded, in `images.json` next to the image data.
 
 `check_images` is what a start runs instead: the images exist, carry this naoqi-sim's version,
@@ -49,11 +50,15 @@ LABEL = "io.naoqi-sim.version"
 RECIPES_LABEL = "io.naoqi-sim.recipes"
 TTS_IMAGE = "naoqi-sim/tts:dev"
 TTS_CONTAINER = "naoqi-sim-tts"
+PERCEPTION_IMAGE = "naoqi-sim/perception:dev"
+PERCEPTION_CONTAINER = "naoqi-sim-perception"
+PERCEPTION_URL = "http://perception:8080"  # where the NAOqi services reach the engine
 NAOQI_PORT = 9559
 READY_TIMEOUT = 240.0  # seconds for the NAOqi container to turn healthy
 TTS_TIMEOUT = (
     60.0  # seconds for the tts engine to load its voices once NAOqi is healthy
 )
+PERCEPTION_TIMEOUT = 60.0  # seconds for the perception engine to load its model
 POLL = 1.0
 
 
@@ -69,6 +74,11 @@ class Images:
 
     def compose(self) -> list[str]:
         return ["docker", "compose", "-f", str(COMPOSE), "--profile", self.profile]
+
+    @property
+    def tags(self) -> tuple[str, ...]:
+        """Every image a start of this version needs, the engines' included."""
+        return (self.image, TTS_IMAGE, PERCEPTION_IMAGE)
 
 
 IMAGES = {
@@ -169,14 +179,14 @@ def _record(image_data: Path, verified: dict[str, str]) -> None:
 
 
 def check_images(version: str, image_data: Path = IMAGE_DATA) -> None:
-    """Raise unless the version's NAOqi image and the tts image are built by this naoqi-sim
-    version, from the recipes as they are now, and verified. Needs Docker; downloads and
-    builds nothing."""
+    """Raise unless the version's NAOqi image, the tts image and the perception image are built
+    by this naoqi-sim version, from the recipes as they are now, and verified (the perception
+    image whether or not a config runs the engine). Needs Docker; downloads and builds nothing."""
     images = IMAGES[version]
     want = naoqi_sim_version()
     recipes = recipes_digest()
     verified = _verified(image_data)
-    for tag in (images.image, TTS_IMAGE):
+    for tag in images.tags:
         found = _inspect(tag)
         if found is None:
             raise ImagesMissingError(f"{tag} is not built: {_command(version)}")
@@ -307,31 +317,81 @@ def wait_tts(
         label(images.version),
         ", ".join(languages),
     )
+    _engine_wait(
+        "tts",
+        TTS_CONTAINER,
+        timeout,
+        abort,
+        f"{label(images.version)}: speech engine ready",
+    )
+
+
+def _engine_wait(
+    name: str,
+    container: str,
+    timeout: float,
+    abort: threading.Event | None,
+    ready: str,
+) -> None:
+    """Until an engine's container is healthy; `BootError` if it exits, turns unhealthy or
+    takes longer than `timeout`, with the end of its log, or as soon as `abort` is set."""
     end = time.monotonic() + timeout
     while True:
-        state = _state(TTS_CONTAINER)
+        state = _state(container)
         if state == ["running", "healthy"]:
-            log.info("%s: speech engine ready", label(images.version))
+            log.info(ready)
             return
         if state[0] != "running" or state[1:] == ["unhealthy"]:
             raise BootError(
-                f"the tts engine did not start ({' '.join(state)}):\n"
-                + container_logs(TTS_CONTAINER)
+                f"the {name} engine did not start ({' '.join(state)}):\n"
+                + container_logs(container)
             )
         if time.monotonic() > end:
             raise BootError(
-                f"the tts engine not healthy after {timeout:.0f} s:\n"
-                + container_logs(TTS_CONTAINER)
+                f"the {name} engine not healthy after {timeout:.0f} s:\n"
+                + container_logs(container)
             )
         if abort is not None and abort.wait(POLL):
-            raise BootError("waiting for the tts engine was cancelled")
+            raise BootError(f"waiting for the {name} engine was cancelled")
         if abort is None:
             time.sleep(POLL)
 
 
+def wait_perception(
+    images: Images,
+    timeout: float | None = None,
+    abort: threading.Event | None = None,
+) -> None:
+    """Until the perception engine's container is healthy: its model loaded (perception-engine.md,
+    "Image and process"). `BootError` as `wait_tts`, default `PERCEPTION_TIMEOUT`."""
+    timeout = PERCEPTION_TIMEOUT if timeout is None else timeout
+    log.info("%s: waiting for the perception engine", label(images.version))
+    _engine_wait(
+        "perception",
+        PERCEPTION_CONTAINER,
+        timeout,
+        abort,
+        f"{label(images.version)}: perception engine ready",
+    )
+
+
 def _build(images: Images, env: dict[str, str]) -> None:
-    log.info("%s: building %s and %s", label(images.version), images.image, TTS_IMAGE)
-    res = run(*images.compose(), "build", "tts", images.service, timeout=3600, env=env)
+    log.info(
+        "%s: building %s, %s and %s",
+        label(images.version),
+        images.image,
+        TTS_IMAGE,
+        PERCEPTION_IMAGE,
+    )
+    res = run(
+        *images.compose(),
+        "build",
+        "tts",
+        "perception",
+        images.service,
+        timeout=3600,
+        env=env,
+    )
     if res.returncode != 0:
         raise ImageBuildError(
             f"docker compose build failed for NAOqi {images.version}:\n"
@@ -343,13 +403,16 @@ def _verify(images: Images, env: dict[str, str]) -> None:
     log.info("%s: verifying the images boot", label(images.version))
     require_free(NAOQI_PORT)
     try:
-        res = run(*images.compose(), "up", "-d", "tts", images.service, env=env)
+        res = run(
+            *images.compose(), "up", "-d", "tts", "perception", images.service, env=env
+        )
         if res.returncode != 0:
             raise BootError(
                 f"docker compose up failed for NAOqi {images.version}:\n{res.stderr[-3000:]}"
             )
         wait_healthy(images)
         wait_tts(images, SpeechSettings().languages)  # the image has their voices
+        wait_perception(images)
     finally:
         run(*images.compose(), "down", timeout=300, env=env)
 
@@ -369,7 +432,7 @@ def _fetch_build_verify(images: Images, image_data: Path) -> None:
     _build(images, env)
     _verify(images, env)
     verified = _verified(image_data)
-    for tag in (images.image, TTS_IMAGE):
+    for tag in images.tags:
         found = _inspect(tag)
         if found is None:  # removed while verifying
             raise ImagesMissingError(f"{tag} disappeared: {_command(images.version)}")

@@ -37,7 +37,8 @@ This config is the **host-level** description. The container keeps its own inter
   "audio_output": { "mode": "play", "record": null },
   "audio_input": { "source": "none", "mono": "duplicate" },
   "video_input": { "top": { "source": "none", "fps": 15, "device": 0 }, "bottom": { "source": "none", "fps": 15, "device": 0 } },
-  "viewer": { "headless": false, "scene": "empty", "variant": "auto", "cameras_display": false, "people_display": false }
+  "viewer": { "headless": false, "scene": "empty", "variant": "auto", "cameras_display": false, "people_display": false },
+  "perception": { "enabled": true }
 }
 ```
 
@@ -50,6 +51,7 @@ class NaoqiSimConfig:
     audio_input: AudioInputSettings = field(default_factory=AudioInputSettings)
     video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
     viewer: ViewerSettings = field(default_factory=ViewerSettings)
+    perception: PerceptionSettings = field(default_factory=PerceptionSettings)
 
 
 @dataclass
@@ -122,6 +124,14 @@ class ViewerSettings:
     cameras_display: bool = False
     # the people NAOqi lists in ALMemory, as markers in the window
     people_display: bool = False
+
+
+@dataclass
+class PerceptionSettings:
+    """The perception engine (perception-engine.md): faces for ALFaceDetection and ALPeoplePerception."""
+
+    # False starts no `perception` container: the modules still answer and find nobody
+    enabled: bool = True
 ```
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
@@ -139,6 +149,10 @@ class ViewerSettings:
 - **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`; `viewer.cameras_display` and `viewer.people_display` are refused with `viewer.headless` (the pictures and the markers are drawn in the window, as naoqi-viewer refuses them). Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
 - **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists, a language's voice can be fetched: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `naoqi_viewer`, nor `sounddevice`.
+
+### The perception engine
+
+`perception.enabled` (default `true`) runs the `perception` container with the stack, so `ALFaceDetection` and `ALPeoplePerception` detect for real on the frames the cameras serve ([perception-engine.md](../container/perception-engine.md), [face-detection.md](../services/face-detection.md), [people-perception.md](../services/people-perception.md)); `NaoqiSim.start()` waits for it as for the `tts` engine ([api.md](api.md), "Lifecycle"). `false` starts no container and the modules find nobody, as a NAO in the dark: for a machine that never shows the robot a face, or a client that runs its own detector and pauses the robot's. The modules and the stubs are always loaded: the service list is a NAO's either way. A NAO has no such switch, so it is not a device block ([devices.md](../host/devices.md)): it is the engine's.
 
 ### The video input: one block per camera
 

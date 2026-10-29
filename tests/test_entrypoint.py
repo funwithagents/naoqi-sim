@@ -87,19 +87,50 @@ FAKE_NAOQI_BIN = textwrap.dedent(
 # A suite autoload with every entry either version's entrypoint edits.
 AUTOLOAD = (
     "[core]\nlauncher\n[extra]\nbehaviormanager\naudioout\naudioplayer\nttsinterface\n"
-    "pythonbridge\nanimatedspeech\nalpanoramacompass\nautonomouslife\ndialog\n"
+    "pythonbridge\nanimatedspeech\nmodularityperception\npeopleperception\nsittingpeopledetection\n"
+    "engagementzones\n"
+    "gazeanalysis\nwavingdetection\nfastpersontracking\nfindpersonhead\nalpanoramacompass\n"
+    "autonomouslife\ndialog\n"
 )
+# the people-perception library and the modules chained to it, left out on both versions...
+PEOPLE_OUT = (
+    "#replaced peopleperception\n#replaced sittingpeopledetection\n#replaced engagementzones\n"
+    "#replaced gazeanalysis\n#replaced wavingdetection\n"
+)
+# the trackers stay on both versions; on 2.8 the sources they read load after modularityperception
+TRACKERS = "fastpersontracking\nfindpersonhead\n"
+MODULARITY = {
+    "2.1": "modularityperception\n",
+    "2.8": "modularityperception\nnaoqi_sim_perception_sources\n",
+}
+KEPT_28 = ["_ALFastPersonTracking", "_ALFindPersonHead"]
 OURS = (
     "naoqi_sim_audio_device_relay\nnaoqi_sim_loader\n"
     "naoqi_sim_speech_front\nnaoqi_sim_audio_player_front\n"
 )
-REPLACED = ["ALTextToSpeech", "ALAudioPlayer"]
-ADDED = [
-    "ALAudioDevice",
-    "_NaoqiSimAudioRelay",
-    "_NaoqiSimTextToSpeech",
-    "_NaoqiSimAudioPlayer",
-]
+REPLACED = ["ALTextToSpeech", "ALAudioPlayer", "ALPeoplePerception"]
+STUBS = {  # the perception stubs each version serves (specs/services/perception-stubs.md)
+    "2.1": ["ALEngagementZones", "ALGazeAnalysis", "ALSittingPeopleDetection"],
+    "2.8": [
+        "ALEngagementZones",
+        "ALGazeAnalysis",
+        "ALSittingPeopleDetection",
+        "ALWavingDetection",
+        "_UserIdentification",
+    ],
+}
+ADDED = {
+    v: [
+        "ALAudioDevice",
+        "_NaoqiSimAudioRelay",
+        "_NaoqiSimTextToSpeech",
+        "_NaoqiSimAudioPlayer",
+        "ALFaceDetection",
+        *STUBS[v],
+        *(["_NaoqiSimPerceptionSources"] if v == "2.8" else []),
+    ]
+    for v in ("2.1", "2.8")
+}
 BUILTINS_21 = [
     "_ALExpressiveness",
     "ALBasicAwareness",
@@ -111,16 +142,21 @@ SERVICES = " ".join(
     [
         "ServiceDirectory ALMemory ALLauncher ALPythonBridge ALServiceManager NaoqiSim",
         *REPLACED,
-        *ADDED,
+        *ADDED["2.8"],  # a superset of 2.1's
         *BUILTINS_21,
+        *KEPT_28,
         "ALAnimatedSpeech ALAutonomousLife ALPanoramaCompass ALDialog",
     ]
 )
 MODULES = {
     "2.1": "naoqi_sim_status_almodule naoqi_sim_speech_almodule "
-    "naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule",
+    "naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule "
+    "naoqi_sim_face_detection_almodule naoqi_sim_people_perception_almodule "
+    "naoqi_sim_perception_stubs_almodule",
     "2.8": "naoqi_sim_status_qiservice naoqi_sim_speech_qiservice "
-    "naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice",
+    "naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice "
+    "naoqi_sim_face_detection_qiservice naoqi_sim_people_perception_qiservice "
+    "naoqi_sim_perception_stubs_qiservice",
 }
 URLS = {"2.1": "--qi-url tcp://127.0.0.1:9559", "2.8": "--qi-url tcp://127.0.0.1:9558"}
 
@@ -236,16 +272,18 @@ def test_sequence_on_2_1(fakes):
     assert calls_only(fakes) == [f"call NaoqiSim.setReady {url}"]
     # The service list is polled until stable (1 + 3 polls), then every replaced, added and
     # added built-in name is checked, right before setReady.
-    assert "NAOqi ready after 4 polls, 20 services" in ep.output()
-    assert fakes.calls()[-11:-1] == [
-        f"info {name} {url}" for name in REPLACED + ADDED + BUILTINS_21
+    checked = REPLACED + ADDED["2.1"] + BUILTINS_21
+    assert f"NAOqi ready after 4 polls, {len(SERVICES.split())} services" in ep.output()
+    assert fakes.calls()[-len(checked) - 1 : -1] == [
+        f"info {name} {url}" for name in checked
     ]
     assert fakes.naoqi_bin("args").startswith("-b 0.0.0.0 -p 9559 --autoload-file ")
     # The copy: audioout (both built-ins) left out, ours right after pythonbridge, and the
     # built-ins a NAO 2.1 autoloads at a NAO's places, autonomouslife and dialog after them.
     assert fakes.booted_autoload() == (
         "[core]\nlauncher\n[extra]\nbehaviormanager\nexpressiveness\n#replaced audioout\n"
-        f"audioplayer\nttsinterface\npythonbridge\n{OURS}animatedspeech\nalpanoramacompass\n"
+        f"audioplayer\nttsinterface\npythonbridge\n{OURS}animatedspeech\n"
+        f"{MODULARITY['2.1']}{PEOPLE_OUT}{TRACKERS}alpanoramacompass\n"
         "basicawareness\nautonomousblinking\nautonomousmoves\nautonomouslife\ndialog\n"
     )
     # The loader's modules and their folder, which naoqi-bin's process inherits.
@@ -260,14 +298,18 @@ def test_sequence_on_2_8(fakes):
 
     url = URLS["2.8"]
     assert calls_only(fakes) == [f"call NaoqiSim.setReady {url}"]
-    assert fakes.calls()[-7:-1] == [f"info {name} {url}" for name in REPLACED + ADDED]
+    checked = REPLACED + ADDED["2.8"] + KEPT_28
+    assert fakes.calls()[-len(checked) - 1 : -1] == [
+        f"info {name} {url}" for name in checked
+    ]
     assert fakes.naoqi_bin("args") == (
         f"--qi-listen-url tcp://127.0.0.1:9558 --autoload-file {fakes.tmp}/autoload.ini"
     )
     # Both built-ins' libraries left out, ours right after pythonbridge; nothing added.
     assert fakes.booted_autoload() == (
         "[core]\nlauncher\n[extra]\nbehaviormanager\naudioout\n#replaced audioplayer\n"
-        f"#replaced ttsinterface\npythonbridge\n{OURS}animatedspeech\nalpanoramacompass\n"
+        f"#replaced ttsinterface\npythonbridge\n{OURS}animatedspeech\n"
+        f"{MODULARITY['2.8']}{PEOPLE_OUT}{TRACKERS}alpanoramacompass\n"
         "autonomouslife\ndialog\n"
     )
     # naoqi-service inherits the loader's variables, and the port our qi services connect to.
@@ -362,6 +404,9 @@ def test_says_what_it_is_still_waiting_for(fakes):
         ("_NaoqiSimAudioPlayer", "added"),
         ("ALAudioDevice", "added"),
         ("_NaoqiSimAudioRelay", "added"),  # the relay registered nothing
+        ("ALPeoplePerception", "replaced"),
+        ("ALFaceDetection", "added"),
+        ("ALEngagementZones", "added"),  # a stub
     ],
 )
 def test_fails_when_one_of_our_names_does_not_register(fakes, version, missing, what):

@@ -43,6 +43,10 @@ class Status(object):
         for device in DEVICES:
             insert(PREFIX + device + "/Source", NONE)
         insert(PREFIX + "Audio/Channels", NONE)  # the audio input's mono policy
+        # the perception modules overwrite these at their load (specs/services/face-detection.md,
+        # perception-stubs.md): `none` and no stub until then
+        insert(PREFIX + "Perception/Source", NONE)
+        insert(PREFIX + "Perception/Stubs", "")
         raise_event(PREFIX + "Ready", 0)
 
     def set_ready(self):

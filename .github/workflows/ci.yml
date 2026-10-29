@@ -44,7 +44,7 @@ jobs:
       - name: Lint
         run: uv run ruff check .
       - name: Format check (code directories only — `ruff format .` reflows Markdown)
-        run: uv run ruff format --check src tests tests-e2e docker/tts-engine
+        run: uv run ruff format --check src tests tests-e2e docker/tts-engine docker/perception-engine
       - name: Type check
         run: uv run pyright
 
@@ -104,7 +104,7 @@ jobs:
         run: |
           stamp=$(uv run python -c "from naoqi_sim import docker_images as d; print(f'{d.naoqi_sim_version()}-{d.recipes_digest()}')")
           echo "key=naoqi-${{ matrix.version }}-$stamp-${{ hashFiles('src/naoqi_sim/suite.py') }}" >> "$GITHUB_OUTPUT"
-      # The version's NAOqi image and the tts image, saved with `docker save`, and the record
+      # The version's NAOqi image, the tts and perception images, saved with `docker save`, and the record
       # of their verified IDs. The images contain Aldebaran's software: a cache only this
       # repository's workflows read, never a registry. The image data are never cached.
       - name: Images (restore)
@@ -125,7 +125,7 @@ jobs:
         run: |
           uv run naoqi-sim fetch-and-build-images ${{ matrix.version }}
           image=$(uv run python -c "from naoqi_sim.docker_images import IMAGES; print(IMAGES['${{ matrix.version }}'].image)")
-          docker save -o "$RUNNER_TEMP/images.tar" "$image" naoqi-sim/tts:dev
+          docker save -o "$RUNNER_TEMP/images.tar" "$image" naoqi-sim/tts:dev naoqi-sim/perception:dev
           rm -rf docker/image-data/${{ matrix.version }}
       # Saved right after the build, not at the end of the job, so a failing live tier
       # doesn't build again on the next run.

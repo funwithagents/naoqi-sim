@@ -13,6 +13,7 @@ from naoqi_sim import docker_images, suite
 from naoqi_sim.cli import main
 from naoqi_sim.docker_images import (
     IMAGES,
+    PERCEPTION_IMAGE,
     TTS_IMAGE,
     check_images,
     fetch_and_build_images,
@@ -82,8 +83,14 @@ def test_built_and_verified_images_pass_the_check(docker, image_data):
         "io.naoqi-sim.version": docker_images.naoqi_sim_version(),
         "io.naoqi-sim.recipes": docker_images.recipes_digest(),
     }
-    assert labels == {"naoqi-sim/naoqi:2.1.4.13": built, TTS_IMAGE: built}
-    # The verification boot was taken down again.
+    assert labels == {
+        "naoqi-sim/naoqi:2.1.4.13": built,
+        TTS_IMAGE: built,
+        PERCEPTION_IMAGE: built,
+    }
+    # The verification boot ran the three containers, and was taken down again.
+    [up] = [c for c in docker.calls if " up " in c]
+    assert up.endswith("up -d tts perception naoqi21")
     assert docker.read()["containers"] == {}
     # 2.8 was not asked for: it is neither built nor verified.
     with pytest.raises(
@@ -96,8 +103,8 @@ def test_no_versions_means_all_of_them(docker, image_data):
     build(image_data=image_data)
     check_images("2.1", image_data)
     check_images("2.8", image_data)
-    assert any("--profile 2.1 build tts naoqi21" in c for c in docker.calls)
-    assert any("--profile 2.8 build tts naoqi28" in c for c in docker.calls)
+    assert any("--profile 2.1 build tts perception naoqi21" in c for c in docker.calls)
+    assert any("--profile 2.8 build tts perception naoqi28" in c for c in docker.calls)
 
 
 def test_an_image_that_does_not_boot_is_not_verified(docker, image_data):
@@ -174,6 +181,44 @@ def test_a_tts_engine_still_loading_its_voices_times_out(
     docker.set(tts_health="starting")
     with pytest.raises(BootError, match="tts engine not healthy after"):
         build("2.1", image_data=image_data)
+
+
+def test_a_perception_engine_that_cannot_load_its_model_fails_the_verification(
+    docker, image_data
+):
+    docker.set(perception_health="exited")
+    with pytest.raises(BootError, match="perception engine did not start") as info:
+        build("2.1", image_data=image_data)
+    assert "fake log line" in str(info.value)  # the end of its log
+    assert any(c.endswith(" down") for c in docker.calls)  # taken down all the same
+    with pytest.raises(ImagesMissingError, match="not verified"):
+        check_images("2.1", image_data)
+
+
+def test_a_perception_engine_still_loading_times_out(docker, image_data, monkeypatch):
+    monkeypatch.setattr(docker_images, "PERCEPTION_TIMEOUT", 0.05)
+    docker.set(perception_health="starting")
+    with pytest.raises(BootError, match="perception engine not healthy after"):
+        build("2.1", image_data=image_data)
+
+
+def test_the_perception_image_is_required_even_when_a_config_runs_no_engine(
+    docker, image_data
+):
+    # A start checks the three images whatever the config says (api.md, "Images").
+    build("2.1", image_data=image_data)
+    state = docker.read()
+    del state["images"][PERCEPTION_IMAGE]
+    docker.write(state)
+    with pytest.raises(ImagesMissingError, match=f"{PERCEPTION_IMAGE} is not built"):
+        check_images("2.1", image_data)
+
+    build("2.1", image_data=image_data)
+    state = docker.read()
+    state["images"][PERCEPTION_IMAGE]["Labels"]["io.naoqi-sim.version"] = "0.0.0"
+    docker.write(state)
+    with pytest.raises(ImagesOutdatedError, match=f"{PERCEPTION_IMAGE} was built by"):
+        check_images("2.1", image_data)
 
 
 def test_a_failed_build_says_why(docker, image_data):

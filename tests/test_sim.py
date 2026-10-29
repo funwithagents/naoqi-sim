@@ -23,6 +23,7 @@ from naoqi_sim.config import (
     CameraSettings,
     NaoqiSettings,
     NaoqiSimConfig,
+    PerceptionSettings,
     SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
@@ -153,11 +154,14 @@ def test_start_runs_the_robot_and_stop_takes_it_down(env):
         assert naoqisim.running and naoqisim.url == "tcp://127.0.0.1:9559"
         assert env.checked == ["2.1"]
         [up] = [c for c in compose_calls(env) if " up " in c]
-        assert "--profile 2.1" in up and up.endswith("up -d --no-build tts naoqi21")
+        assert "--profile 2.1" in up
+        assert up.endswith("up -d --no-build tts perception naoqi21")
         assert env.read()["up_languages"] == "German,English"
+        assert env.read()["up_perception_url"] == "http://perception:8080"
         assert env.read()["containers"] == {
             "naoqi-sim-naoqi21": "healthy",
             "naoqi-sim-tts": "healthy",
+            "naoqi-sim-perception": "healthy",
         }
         # The audio output is up: what the containers stream reaches the sink.
         play(sim.AUDIO_OUTPUT_PORT)
@@ -192,7 +196,10 @@ def test_async_with_runs_the_version_and_stops_it(env):
         assert not naoqisim.running
 
     asyncio.run(run())
-    assert any(c.endswith("up -d --no-build tts naoqi28") for c in compose_calls(env))
+    assert any(
+        c.endswith("up -d --no-build tts perception naoqi28")
+        for c in compose_calls(env)
+    )
 
 
 def test_the_window_runs_the_viewer_and_stop_closes_it(env):
@@ -445,7 +452,7 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
         "NAOqi 2.1 (sim): checking Docker, the images and the ports",
         "NAOqi 2.1 (sim): starting the audio output (MemorySink)",
         f"NAOqi 2.1 (sim): opening the host link on port {sim.HOST_LINK_PORT}",
-        "NAOqi 2.1 (sim): starting the containers (tts, naoqi21)",
+        "NAOqi 2.1 (sim): starting the containers (tts, perception, naoqi21)",
         "NAOqi 2.1 (sim): containers up, waiting for NAOqi to start (up to 240 s)",
         "NAOqi 2.1 (sim): NAOqi started",
         (
@@ -453,6 +460,8 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
             "English, French (a language's first use downloads its voice)"
         ),
         "NAOqi 2.1 (sim): speech engine ready",
+        "NAOqi 2.1 (sim): waiting for the perception engine",
+        "NAOqi 2.1 (sim): perception engine ready",
         "NAOqi 2.1 (sim): starting naoqi-viewer (headless)",
         "NAOqi 2.1 (sim): starting the video input (top from render)",
         "NAOqi 2.1 (sim): starting the audio input (fake source)",
@@ -468,6 +477,38 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
         "NAOqi 2.1 (sim): stopping the audio output",
         "NAOqi 2.1 (sim): NAOqi stopped",
     ]
+
+
+def test_without_the_perception_engine_its_container_is_neither_started_nor_awaited(
+    env, caplog
+):
+    config = NaoqiSimConfig(
+        viewer=HEADLESS, perception=PerceptionSettings(enabled=False)
+    )
+    env.set(perception_health="exited")  # would fail the start if it were awaited
+    naoqisim = sim.NaoqiSim(config, sink=MemorySink())
+    with caplog.at_level(logging.INFO, logger="naoqi_sim"):
+        asyncio.run(naoqisim.start())
+    try:
+        [up] = [c for c in compose_calls(env) if " up " in c]
+        assert up.endswith("up -d --no-build tts naoqi21")
+        assert env.read()["up_perception_url"] == ""  # the modules reach no engine
+        assert "naoqi-sim-perception" not in env.read()["containers"]
+        assert (
+            "NAOqi 2.1 (sim): starting the containers (tts, naoqi21)" in caplog.messages
+        )
+        assert not any("perception engine" in m for m in caplog.messages)
+    finally:
+        asyncio.run(naoqisim.stop())
+
+
+def test_a_perception_engine_that_dies_fails_the_start(env):
+    env.set(perception_health="exited")
+    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    with pytest.raises(BootError, match="perception engine did not start"):
+        asyncio.run(naoqisim.start())
+    assert not naoqisim.running
+    assert env.read()["containers"] == {}
 
 
 def test_fake_audio_needs_the_fake_source(env):

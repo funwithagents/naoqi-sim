@@ -410,8 +410,21 @@ class ViewerSettings(_Loaders):
 
 
 @dataclass(frozen=True)
+class PerceptionSettings(_Loaders):
+    """The perception engine (specs/container/perception-engine.md): faces for ALFaceDetection
+    and ALPeoplePerception."""
+
+    # False starts no `perception` container: the modules still answer and find nobody
+    enabled: bool = True
+
+    @classmethod
+    def parse(cls, data: Any, path: str) -> Self:
+        return _parse_block(cls, data, path, {"enabled": _as_bool})
+
+
+@dataclass(frozen=True)
 class NaoqiSimConfig(_Loaders):
-    """A simulated NAO: its NAOqi, its speech engine, its host devices and its viewer."""
+    """A simulated NAO: its NAOqi, its engines, its host devices and its viewer."""
 
     naoqi: NaoqiSettings = field(default_factory=NaoqiSettings)
     speech: SpeechSettings = field(default_factory=SpeechSettings)
@@ -419,6 +432,7 @@ class NaoqiSimConfig(_Loaders):
     audio_input: AudioInputSettings = field(default_factory=AudioInputSettings)
     video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
     viewer: ViewerSettings = field(default_factory=ViewerSettings)
+    perception: PerceptionSettings = field(default_factory=PerceptionSettings)
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
@@ -433,6 +447,7 @@ class NaoqiSimConfig(_Loaders):
                 "audio_input": lambda d: AudioInputSettings.parse(d, "audio_input"),
                 "video_input": lambda d: VideoInputSettings.parse(d, "video_input"),
                 "viewer": lambda d: ViewerSettings.parse(d, "viewer"),
+                "perception": lambda d: PerceptionSettings.parse(d, "perception"),
             },
         )
 
