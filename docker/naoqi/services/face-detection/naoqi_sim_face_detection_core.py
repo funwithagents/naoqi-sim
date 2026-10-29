@@ -32,6 +32,7 @@ VGA = 2
 RGB = 11
 WIDTH, HEIGHT = 640, 480
 MIN_PERIOD_MS = 100  # 10 Hz: the floor of the schedule
+IDLE_TICK_S = 0.5  # how often a consumer that wants no detections gets on_idle (its timers)
 DEFAULT_PERIOD_MS = 500  # a subscribe(name) with no period (the documentation's figure)
 CAMERA_NAMES = {0: "CameraTop", 1: "CameraBottom"}
 FRAME_TORSO, FRAME_WORLD, FRAME_ROBOT = 0, 1, 2
@@ -157,7 +158,9 @@ class Detector(object):
         return self._motion
 
     def add_consumer(self, consumer):
-        """consumer.wants() -> period in ms, or None; consumer.on_detection(detection)."""
+        """consumer.wants() -> period in ms, or None; consumer.on_detection(detection); and, if it
+        has one, consumer.on_idle(), every IDLE_TICK_S while it wants no detections (the people
+        module's timers keep running with nobody subscribed)."""
         with self.lock:
             self.consumers.append(consumer)
         self.poke()
@@ -191,13 +194,26 @@ class Detector(object):
         self._unsubscribe()
 
     # -- the loop -------------------------------------------------------------------
+    def idle(self):
+        """on_idle for every consumer that wants no detections."""
+        for consumer in list(self.consumers):
+            if consumer.wants() is None and hasattr(consumer, "on_idle"):
+                try:
+                    consumer.on_idle()
+                except Exception as e:  # noqa: BLE001
+                    self.log(method="consumer-failed", consumer=consumer.service, error=repr(e))
+
     def _run(self):
         next_at = None
+        last_idle = 0.0
         while self.running:
+            if self.clock() - last_idle >= IDLE_TICK_S:
+                last_idle = self.clock()
+                self.idle()
             period = self.period_ms()
             if period is None:
                 self._unsubscribe()
-                self.wake.wait(0.5)
+                self.wake.wait(IDLE_TICK_S)
                 self.wake.clear()
                 next_at = None
                 continue
@@ -205,7 +221,7 @@ class Detector(object):
             if next_at is None:
                 next_at = now
             if now < next_at:
-                self.wake.wait(next_at - now)
+                self.wake.wait(min(next_at - now, IDLE_TICK_S))
                 self.wake.clear()
                 continue
             # a slot missed is skipped, never caught up

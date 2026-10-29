@@ -11,6 +11,7 @@ keys first, then the events the built-in awareness, tracker and user session rea
 """
 import math
 import threading
+import time
 
 import naoqi_sim_perception_stubs_core as ext
 
@@ -94,12 +95,10 @@ class Population(ext.Extractor):
         self.insert(PREFIX + "NonVisiblePeopleList", [])
         detector.add_consumer(self)
 
-    def now(self, detection=None):
+    def now(self):
+        """The module's own clock, for the timers (a detection's stamp is NAOqi's, for the payloads)."""
         if self.clock is not None:
             return self.clock()
-        if detection is not None:
-            return detection.stamp[0] + detection.stamp[1] / 1e6
-        import time
         return time.time()
 
     # -- the detector's consumer ------------------------------------------------
@@ -112,7 +111,7 @@ class Population(ext.Extractor):
         self.detector.poke()
 
     def on_detection(self, detection):
-        now = self.now(detection)
+        now = self.now()
         with self.state_lock:
             arrived = []
             seen = set()
@@ -157,6 +156,28 @@ class Population(ext.Extractor):
         if counts != self.last_counts:
             self.last_counts = counts
             self.log(method="population", visible=visible, people=sorted(self.people))
+
+    def on_idle(self):
+        """With no detection coming (nobody subscribed, or paused), the timers still run: a person
+        turns invisible, then leaves, as when the camera stops seeing them. Writes and raises only
+        when something changed."""
+        now = self.now()
+        with self.state_lock:
+            visible_before = set(p.id for p in self.people.values() if p.visible)
+            left = self._age(now)
+            visible_after = set(p.id for p in self.people.values() if p.visible)
+            changed = bool(left) or visible_before != visible_after
+            if changed:
+                self._write_keys(now)
+        if not changed:
+            return
+        for pid in left:
+            self.raise_event(PREFIX + "JustLeft", pid)
+            self.signal("justLeft", pid)
+        stamp = [int(now), int((now % 1) * 1e6)]
+        people = [[p.id, p.distance, p.pitch, p.yaw] for p in self._sorted() if p.visible]
+        self.raise_event(PREFIX + "PopulationUpdated", [stamp, people, [0.0] * 6, [0.0] * 6, 0])
+        self.log(method="population", visible=sorted(visible_after), people=sorted(self.people), idle=True)
 
     def _match(self, world, taken):
         best, best_d = None, MATCH_DISTANCE

@@ -386,3 +386,31 @@ def test_the_thread_paces_detections_at_the_period_and_stops_cleanly():
     assert (
         len(rig.memory.data) == 0
     )  # the module had no subscriber: it published nothing
+
+
+def test_a_consumer_that_wants_no_detection_still_gets_its_tick():
+    rig = Rig()
+    ticks = []
+
+    class Idle:
+        service = "idle"
+
+        def wants(self):
+            return None
+
+        def on_detection(self, d):
+            raise AssertionError("no detection for a consumer that wants none")
+
+        def on_idle(self):
+            ticks.append(time.monotonic())
+
+    rig.detector.add_consumer(Idle())
+    rig.detector.start()
+    try:
+        deadline = time.monotonic() + 3.0
+        while len(ticks) < 3 and time.monotonic() < deadline:
+            time.sleep(0.05)
+    finally:
+        rig.detector.stop()
+    assert len(ticks) >= 3, ticks  # every IDLE_TICK_S (0.5 s)
+    assert rig.video.subscriptions == []  # and the camera never subscribed

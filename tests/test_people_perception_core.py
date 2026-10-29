@@ -337,3 +337,31 @@ def test_the_table_serves_every_setting_and_the_hidden_methods():
     s._setDetectionMode("fast")
     assert s._getDetectionMode() == "fast"
     assert "ALPeoplePerception" in s.whoami()
+
+
+def test_the_timers_run_with_nobody_subscribed():
+    """Unsubscribed, no detection comes: the person still turns invisible after 2 s and leaves
+    after 10 s, as when the camera stops seeing them, rather than staying "visible" forever."""
+    rig = Rig()
+    rig.see([face()])
+    rig.population.unsubscribe("ALBasicAwareness")
+    assert rig.population.wants() is None
+    m = rig.memory
+    rig.t += 1.0
+    rig.population.on_idle()
+    assert m.data["PeoplePerception/VisiblePeopleList"] == [1]
+    events = len(m.events())
+    rig.population.on_idle()
+    assert len(m.events()) == events  # nothing changed: nothing raised
+    rig.t += 1.5  # 2.5 s unseen
+    rig.population.on_idle()
+    assert (
+        m.data["PeoplePerception/VisiblePeopleList"] == []
+        and m.person(1, "IsVisible") is False
+    )
+    assert m.events("PeoplePerception/PopulationUpdated")[-1][1][1] == []
+    rig.t += 8.0  # 10.5 s
+    rig.population.on_idle()
+    assert m.data["PeoplePerception/PeopleList"] == []
+    assert m.events("PeoplePerception/JustLeft") == [("PeoplePerception/JustLeft", 1)]
+    assert not [k for k in m.data if "/Person/" in k]
