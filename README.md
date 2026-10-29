@@ -43,6 +43,9 @@ uv run naoqi-sim run                      # NAOqi 2.1 with the sim window, speec
 uv run naoqi-sim run --config examples/configs/2.8.json       # or NAOqi 2.8; headless.json: no window, silent
 uv run naoqi-sim run --config examples/configs/mic.json       # the robot hears through your microphone
 uv run naoqi-sim run --config examples/configs/webcam.json    # its top camera sees through your webcam (macOS: Camera access for the terminal)
+# A webcam does not turn with the head: the robot detects you and the people markers are right, but
+# ALBasicAwareness keeps turning the head while you stay off-centre. Check head tracking with the
+# render camera and face props (specs/host/video-input.md, "The webcam source").
 uv run naoqi-sim run --config examples/configs/languages.json # English, French and German installed (German's voice fetched once)
 uv run naoqi-sim status                   # from another terminal: the containers and the robot's state
 uv run naoqi-sim logs --follow            # the containers' logs

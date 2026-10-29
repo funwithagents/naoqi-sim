@@ -259,6 +259,41 @@ def test_awareness_turns_the_head_toward_a_face(nao, standing):
         nao.sim.props.despawn(state.name)
 
 
+def test_awareness_follows_a_face_that_moves(nao, standing):
+    """After its first look, awareness keeps the head on the person as they move. That runs
+    through the fast person tracking process, which the entrypoint puts in 2D as on a real NAO:
+    in the desktop's default 3D mode it looked in a depth camera nothing feeds, lost the person at
+    once, and the head never followed (container/naoqi-fidelity.md)."""
+    motion = nao.service("ALMotion")
+    awareness = nao.service("ALBasicAwareness")
+    awareness.stopAwareness()
+    awareness.setTrackingMode("Head")
+    awareness.startAwareness()
+    camera_z = motion.getPosition(TOP_CAMERA, 2, True)[2]  # FRAME_ROBOT
+    state = nao.sim.props.spawn(
+        "face", (math.cos(0.3), math.sin(0.3), camera_z), frame="robot"
+    )
+    try:
+        wait_until(
+            lambda: motion.getAngles("HeadYaw", True)[0] > 0.15, 8.0, "the first look"
+        )
+        nao.sim.props.place(
+            state.name,
+            (math.cos(-0.3), math.sin(-0.3), camera_z),
+            duration=1.5,
+            frame="robot",
+        )
+        wait_until(
+            lambda: motion.getAngles("HeadYaw", True)[0] < -0.12,
+            8.0,
+            "the head following the face to the other side",
+        )
+        assert nao.service("ALTracker").isTargetLost() is False
+    finally:
+        awareness.stopAwareness()
+        nao.sim.props.despawn(state.name)
+
+
 def test_awareness_raises_the_head_to_a_face_above_the_camera(nao, standing):
     """A face above the camera, as a visitor's face is above a NAO's: awareness raises the head
     until the face is on the camera's axis. Measured from the floor, the angles sent the head far

@@ -33,4 +33,5 @@ wait_for_naoqi ALLauncher ALPythonBridge $LAST
 check_answer replaced $REPLACED
 check_answer added $ADDED
 check_answer "kept built-in" $KEPT
+vision_2d _ALFastPersonTracking _ALFindPersonHead ALMovementDetection
 mark_ready
