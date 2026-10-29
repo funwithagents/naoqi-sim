@@ -66,12 +66,12 @@ Oct 29, 2026, OrbStack on Apple Silicon, the headless viewer rendering both came
 
 ### A real NAO's estimate, for reference
 
-Bobby (NAO V5, 2.1.4.13, sitting on the floor and looking up at the person), Oct 29, 2026, against a tape measure from its camera: a person at 0.8 m read 0.89 to 0.95 m, at 1.3 m 1.24 to 1.46 m (a NAO's own estimate runs 0 to 20 % long, more so up close); walking from one to the other, the person got two new ids on the way (62, 133, then 149): a NAO does not keep an id through a quick move either. naoqi-sim's estimate on a real face (the webcam) is to compare with these, through `HEAD_HEIGHT` (open question 2). Data: `spike/robot-2.1-people-frames*.json` (local).
+Bobby (NAO V5, 2.1.4.13, sitting on the floor and looking up at the person), Oct 29, 2026, against a tape measure from its camera: a person at 0.8 m read 0.89 to 0.95 m, at 1.3 m 1.24 to 1.46 m (a NAO's own estimate runs 0 to 20 % long, more so up close); walking from one to the other, the person got two new ids on the way (62, 133, then 149): a NAO does not keep an id through a quick move either. naoqi-sim's estimate on a real face, the same day, through a laptop webcam on the top camera: a person at 0.50 m (tape measure) read 0.45 to 0.48 m, 4 to 10 % short, as close as the NAO's own; `HEAD_HEIGHT` stays at 0.20 m. The webcam's own field of view is a factor there (video-input.md, "The webcam source"), vertically close to a NAO's 47.64°. Data: `spike/robot-2.1-people-frames*.json` (local).
 
 ## Open questions
 
 1. **Several faces close together.** The angular match may swap two faces crossing each other; a NAO's tracker does better with its own filtering. Fine for tests with distinct props; a client with crowds will tell.
-2. **`HEAD_HEIGHT`** (0.20 m) is to check with a webcam measurement on real faces. The other defaults are the built-in's (above); a real NAO's getters would confirm them.
+2. **`HEAD_HEIGHT`** (0.20 m) gave 4 to 10 % short on one real face at 0.5 m through a webcam (above); more faces and distances would refine it. The other defaults are the built-in's (above).
 3. **Movement detection** (`setMovementDetectionEnabled`) is kept, not applied: `ALMovementDetection` stays the built-in, which detects nothing on the desktop, and awareness's movement stimulus stays silent. A replacement from frame differences is a later concept.
 5. ~~**A NAO's population when its last subscriber leaves.**~~ Measured on bobby, Oct 29, 2026: cleared at once, `PopulationReset` (above).
 4. **Engagement zones from the population** would make `ALEngagementZones` real: a few lines of geometry over these keys ([perception-stubs.md](perception-stubs.md), open question 1).
