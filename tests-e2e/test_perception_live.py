@@ -175,9 +175,15 @@ def test_a_face_prop_is_a_person_where_the_prop_is(nao, face, people):
     assert memory.getData("PeoplePerception/VisiblePeopleList") == [pid]
     position = memory.getData(f"PeoplePerception/Person/{pid}/PositionInWorldFrame")
     assert position == pytest.approx(list(face.pos), abs=0.25)
+    # from the camera, as a NAO measures them (people-perception.md)
+    camera = nao.service("ALMotion").getPosition(TOP_CAMERA, WORLD, True)
     assert memory.getData(f"PeoplePerception/Person/{pid}/Distance") == pytest.approx(
-        math.hypot(*FACE_AHEAD[:2]), abs=0.25
+        math.dist(camera[:3], face.pos), abs=0.25
     )
+    yaw, pitch = angles_to(nao.service("ALMotion"), face.pos)
+    assert memory.getData(
+        f"PeoplePerception/Person/{pid}/AnglesYawPitch"
+    ) == pytest.approx([yaw, pitch], abs=0.07)
     assert memory.getData(
         f"PeoplePerception/Person/{pid}/IsVisible"
     )  # a bool, an int on 2.1
@@ -250,6 +256,68 @@ def test_awareness_turns_the_head_toward_a_face(nao, standing):
         assert abs(alpha) < 0.2, "the face near the camera's axis"
     finally:
         awareness.stopAwareness()
+        nao.sim.props.despawn(state.name)
+
+
+def test_awareness_raises_the_head_to_a_face_above_the_camera(nao, standing):
+    """A face above the camera, as a visitor's face is above a NAO's: awareness raises the head
+    until the face is on the camera's axis. Measured from the floor, the angles sent the head far
+    past the face (or out of its reach for a face close by: the head never moved with a webcam);
+    bobby showed they are the camera's (people-perception.md). The face sits 1.5 m ahead and
+    0.2 m above the camera, about 0.13 rad up: fully in both versions' top camera, whose view ends
+    about 0.42 rad up, so the detector sees it whole."""
+    motion = nao.service("ALMotion")
+    awareness = nao.service("ALBasicAwareness")
+    awareness.stopAwareness()
+    awareness.setTrackingMode("Head")
+    awareness.startAwareness()
+    camera_z = motion.getPosition(TOP_CAMERA, 2, True)[2]  # FRAME_ROBOT
+    pitch_before = motion.getAngles("HeadPitch", True)[0]
+    state = nao.sim.props.spawn("face", (1.5, 0.15, camera_z + 0.2), frame="robot")
+    try:
+        wait_until(
+            lambda: motion.getAngles("HeadPitch", True)[0] < pitch_before - 0.06,
+            8.0,
+            "the head raised toward the face",
+        )
+        time.sleep(2.0)  # settled
+        yaw, pitch = angles_to(motion, state.pos)
+        assert abs(pitch) < 0.1 and abs(yaw) < 0.1, "the face on the camera's axis"
+    finally:
+        awareness.stopAwareness()
+        nao.sim.props.despawn(state.name)
+
+
+def test_the_last_subscriber_leaving_clears_the_population(nao, standing):
+    """As a NAO does (bobby, Oct 29, 2026): cleared at once, with PopulationReset."""
+    nao.service(
+        "ALBasicAwareness"
+    ).stopAwareness()  # 2.8's life runs it: no other subscriber
+    perception = nao.service("ALPeoplePerception")
+    assert perception.getSubscribersInfo() == []
+    memory = nao.service("ALMemory")
+    state = nao.sim.props.spawn("face", FACE_AHEAD, frame="robot")
+    events = Events(
+        nao, "PeoplePerception/PopulationReset", "PeoplePerception/JustLeft"
+    )
+    try:
+        perception.subscribe("test_perception_live", 200, 0.0)
+        wait_until(
+            lambda: memory.getData("PeoplePerception/PeopleList") != [], 4.0, "a person"
+        )
+        perception.unsubscribe("test_perception_live")
+        wait_until(
+            lambda: memory.getData("PeoplePerception/PeopleList") == [],
+            1.0,
+            "the population cleared",
+        )
+        wait_until(
+            lambda: bool(events.of("PeoplePerception/PopulationReset")),
+            1.0,
+            "PopulationReset",
+        )
+        assert events.of("PeoplePerception/JustLeft") == []
+    finally:
         nao.sim.props.despawn(state.name)
 
 

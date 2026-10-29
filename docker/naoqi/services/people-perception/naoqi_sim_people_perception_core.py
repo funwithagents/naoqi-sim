@@ -108,6 +108,12 @@ class Population(ext.Extractor):
         return self.getCurrentPeriod()
 
     def subscriptions_changed(self):
+        # The last subscriber gone, a NAO clears its population at once and raises PopulationReset
+        # (bobby, Oct 29, 2026, twice, even with nobody in it; no JustLeft).
+        had = getattr(self, "_had_subscribers", False)
+        self._had_subscribers = bool(self.subscribers)
+        if had and not self.subscribers:
+            self.reset_population()
         self.detector.poke()
 
     def on_detection(self, detection):
@@ -119,7 +125,9 @@ class Population(ext.Extractor):
             for face in faces:
                 head = head_in_camera_frame(face.alpha, face.beta, face.size_y)
                 robot = transform_point(detection.transforms[FRAME_ROBOT], head)
-                distance = math.sqrt(robot[0] ** 2 + robot[1] ** 2 + robot[2] ** 2)
+                # from the camera, as a NAO measures it (bobby, Oct 29, 2026: Distance is the
+                # camera-to-head distance; AnglesYawPitch the head's angles from the camera's axis)
+                distance = math.sqrt(head[0] ** 2 + head[1] ** 2 + head[2] ** 2)
                 if distance > self.get("MaximumDetectionRange"):
                     continue
                 world = transform_point(detection.transforms[FRAME_WORLD], head)
@@ -137,8 +145,7 @@ class Population(ext.Extractor):
                 person.torso = transform_point(detection.transforms[FRAME_TORSO], head)
                 person.robot = robot
                 person.world = world
-                person.yaw = math.atan2(robot[1], robot[0])
-                person.pitch = -math.atan2(robot[2], math.sqrt(robot[0] ** 2 + robot[1] ** 2))
+                person.yaw, person.pitch = face.alpha, face.beta
             left = self._age(now)
             self._write_keys(now)
             visible = [p.id for p in self._sorted() if p.visible]
@@ -158,9 +165,10 @@ class Population(ext.Extractor):
             self.log(method="population", visible=visible, people=sorted(self.people))
 
     def on_idle(self):
-        """With no detection coming (nobody subscribed, or paused), the timers still run: a person
-        turns invisible, then leaves, as when the camera stops seeing them. Writes and raises only
-        when something changed."""
+        """Paused, no detection comes but the timers still run: a person turns invisible, then
+        leaves, as when the camera stops seeing them (what a paused NAO does is not measured).
+        Writes and raises only when something changed. With nobody subscribed the population was
+        cleared when the last subscriber left (subscriptions_changed): nothing is left to age."""
         now = self.now()
         with self.state_lock:
             visible_before = set(p.id for p in self.people.values() if p.visible)
@@ -175,7 +183,7 @@ class Population(ext.Extractor):
             self.raise_event(PREFIX + "JustLeft", pid)
             self.signal("justLeft", pid)
         stamp = [int(now), int((now % 1) * 1e6)]
-        people = [[p.id, p.distance, p.pitch, p.yaw] for p in self._sorted() if p.visible]
+        people = [[p.id, p.distance, p.pitch, p.yaw] for p in self._sorted() if p.visible]  # camera-relative
         self.raise_event(PREFIX + "PopulationUpdated", [stamp, people, [0.0] * 6, [0.0] * 6, 0])
         self.log(method="population", visible=sorted(visible_after), people=sorted(self.people), idle=True)
 
@@ -238,7 +246,7 @@ class Population(ext.Extractor):
                 del self.people[pid]
                 self._remove_person(pid)
             self._write_keys(self.now())
-        self.raise_event(PREFIX + "PopulationReset", 0)
+        self.raise_event(PREFIX + "PopulationReset", None)
         self.signal("populationReset")
         self.log(method="resetPopulation", removed=ids)
 

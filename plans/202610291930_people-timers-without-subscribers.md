@@ -23,3 +23,14 @@ Lint, type check, the fast tier; `uv run pytest tests-e2e/test_perception_live.p
 ## As built
 
 Done Oct 29, 2026: lint, type check, the fast tier (427 passed) and `tests-e2e/test_perception_live.py` on both versions (13 passed, 1 expected failure: life on 2.1) pass. The hand check with the webcam (the marker leaving about 10 s after the last subscriber) is the user's, with naoqi-viewer#7's people display, pinned since at `bd3b71f`; naoqi-viewer's own people live tests pass against this naoqi-sim (and, in its CI, against the built-in people perception).
+
+## Amended Oct 29, 2026: what a real NAO does
+
+Measured on bobby (a real NAO 2.1) the same day, two things changed this plan:
+
+- **Leaving**: a NAO clears its population at once when the last subscriber leaves, with `PopulationReset` and no `JustLeft`. That replaces the timers with nobody subscribed; the timers stay for a paused module.
+- **Frames**: `Distance` is the camera-to-head distance and `AnglesYawPitch` the head's angles from the camera's axis, and so are the `PeopleDetected`/`PopulationUpdated` entries. Ours were measured from the floor origin, which put a visitor's face, above the camera, out of the head's reach: with a webcam, awareness never moved the head.
+
+Scope added: the people core (camera-relative values, clearing on the last unsubscribe), its tests, `tests-e2e/test_perception_live.py` (the angles in the keys, a face above the camera raising the head, the population cleared on the last unsubscribe), [people-perception.md](../specs/services/people-perception.md) back to `Updated` until this is verified.
+
+Verified after the amendment: the fast tier (428 passed) and `tests-e2e/test_perception_live.py` on both versions (16 passed and 1 expected failure, then the face-above test, moved fully into the camera's view, passing on both: 0.35 m above the camera at 1 m left the face cut by the top of 2.1's view, where the detector does not find it).
