@@ -137,6 +137,10 @@ def test_cross_field_requirements():
         error_for({"viewer": {"headless": True, "cameras_display": True}}).key
         == "viewer.cameras_display"
     )
+    assert (
+        error_for({"viewer": {"headless": True, "people_display": True}}).key
+        == "viewer.people_display"
+    )
 
 
 def test_the_wav_source_is_gone():

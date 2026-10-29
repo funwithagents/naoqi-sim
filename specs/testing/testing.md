@@ -85,7 +85,7 @@ naoqi-sim is tested as what it is: containers that behave like a NAO in their AP
 
 ## Tooling
 
-- **The fast tier runs in parallel** (pytest-xdist, `-n logical --maxprocesses 8` in `addopts`, as reachy-mini-bridge's): it is sleep-bound (the audio output, the cores and the fake `docker` run in real time), so 105 s serially take about 18 s on eight workers. Tests use free ports and their own temporary folders, so workers share nothing. `uv run pytest -n 0` runs it serially. `tests-e2e/conftest.py` forces the live tier serial: its tests share the one naoqi-sim on 9559.
+- **The fast tier runs in parallel** (pytest-xdist, `-n logical --maxprocesses 8` in `addopts`): it is sleep-bound (the audio output, the cores and the fake `docker` run in real time), so 105 s serially take about 18 s on eight workers. Tests use free ports and their own temporary folders, so workers share nothing. `uv run pytest -n 0` runs it serially. `tests-e2e/conftest.py` forces the live tier serial: its tests share the one naoqi-sim on 9559.
 
 - **`pytest`** is the runner; **`ruff`** lints/formats; **`pyright`** (`standard` mode) type-checks. All three are the gate after any change — lint, type check, and tests must pass before work is considered done (see [AGENTS.md](../../AGENTS.md), "Verification").
 - **`pyright` covers test code too:** its `include` is `src`, `tests`, and `tests-e2e`, so tests are type-checked alongside the library rather than being a blind spot.

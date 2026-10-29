@@ -67,7 +67,7 @@ explicit = true  # only the packages pinned to it below come from it
 [tool.uv.sources]
 qi = { index = "libqi" }
 # naoqi-viewer is not on PyPI yet (specs/project.md, open question 1): its repository, pinned.
-naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "8f3976f4d153297ff8ed9897fb36f70c163747f7" }
+naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "98bea7c6f97df80cf0123881d8b3765b12f38431" }
 
 [tool.ruff]
 target-version = "py312"  # keep in sync with requires-python

@@ -35,7 +35,7 @@ from naoqi_sim.stack import (
     NaoqiSimStatus,
 )
 from naoqi_sim.video_input import FrameSource, RenderSource, VideoInput
-from naoqi_sim.viewer import SimWorld, needs_viewer, viewer_config
+from naoqi_sim.viewer import SimProps, SimWorld, needs_viewer, viewer_config
 from naoqi_sim.webcam import Webcam, check_webcam
 
 log = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ class NaoqiSim:
         self._audio_output: AudioOutput | None = None
         self._link: HostLink | None = None
         self._audio_input: AudioInput | None = None
+        self._world: SimWorld | None = None
         self._undo: list[tuple[str, Callable[[], None]]] = []
         self._running = False
         self._busy = asyncio.Lock()
@@ -114,6 +115,18 @@ class NaoqiSim:
                 "no fake audio source to play into"
             )
         return source
+
+    @property
+    def props(self) -> SimProps:
+        """The props a test puts in the simulated world (specs/host/props.md): naoqi-viewer's
+        calls, with poses in the scene's frame or the robot's (`frame="robot"`)."""
+        self.url  # noqa: B018  (raises NotRunningError)
+        if self._world is None:
+            raise NaoqiSimError(
+                "this config runs no viewer, so there is no world to put props in: "
+                "set viewer.headless to false, or a camera's source to 'render'"
+            )
+        return self._world.props
 
     async def status(self) -> NaoqiSimStatus:
         """What the `NaoqiSim` service reports, read over qi."""
@@ -272,9 +285,15 @@ class NaoqiSim:
             "headless" if self._config.viewer.headless else "window",
         )
         world = SimWorld(world_config)
-        self._undo.append(("viewer", world.close))
+        self._undo.append(("viewer", self._close_world))
+        self._world = world
         world.launch()
         return world
+
+    def _close_world(self) -> None:
+        world, self._world = self._world, None
+        if world is not None:
+            world.close()
 
     def _start_video_input(self, world: SimWorld | None) -> None:
         """The cameras the config feeds, each from its source: the viewer's render, or a webcam
