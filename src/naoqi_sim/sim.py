@@ -270,9 +270,9 @@ class NaoqiSim:
     def _start_containers(self) -> None:
         version = self._config.naoqi.version
         log.info(
-            "%s: starting the containers (tts, %s)",
+            "%s: starting the containers (%s)",
             self._label,
-            docker_images.IMAGES[version].service,
+            ", ".join(stack.services(self._config)),
         )
         # Registered first: a failed `up` may have started some of them.
         self._undo.append(("containers", lambda: stack.down(version)))

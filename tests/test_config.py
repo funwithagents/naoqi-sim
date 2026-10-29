@@ -12,6 +12,7 @@ from naoqi_sim.config import (
     ConfigError,
     NaoqiSettings,
     NaoqiSimConfig,
+    PerceptionSettings,
     SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
@@ -64,6 +65,7 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
                 "bottom": {"source": "render", "fps": 5},
             },
             "viewer": {"headless": True, "scene": "table", "variant": "placeholder"},
+            "perception": {"enabled": False},
         }
     )
 
@@ -163,6 +165,7 @@ def test_every_default_is_declared_once_on_the_dataclass():
         AudioInputSettings,
         VideoInputSettings,
         ViewerSettings,
+        PerceptionSettings,
     ):
         assert cls.from_dict({}) == cls()
         assert {f.name for f in fields(cls)} == set(cls().to_dict())
@@ -250,3 +253,17 @@ def test_the_installed_languages_keep_their_order_and_name_the_voiceless_ones():
 
     error = error_for({"speech": {"languages": ["Japanese"]}})
     assert "'Japanese' has no voice" in str(error) and "Czech" in str(error)
+
+
+def test_the_perception_engine_is_on_unless_the_config_turns_it_off():
+    # A NAO has no such switch: the modules are always loaded, the engine is the config's.
+    assert NaoqiSimConfig().perception == PerceptionSettings(enabled=True)
+    assert NaoqiSimConfig.from_dict({"perception": {}}).perception.enabled
+    off = NaoqiSimConfig.from_dict({"perception": {"enabled": False}})
+    assert not off.perception.enabled
+    assert NaoqiSimConfig.from_dict(off.to_dict()) == off
+
+    assert error_for({"perception": {"enabled": "no"}}).key == "perception.enabled"
+    assert error_for({"perception": {"enabled": 1}}).key == "perception.enabled"
+    unknown = error_for({"perception": {"detector": "yunet"}})
+    assert unknown.key == "perception" and "perception.detector" in str(unknown)

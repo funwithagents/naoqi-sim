@@ -19,8 +19,9 @@ def test_the_target_identifies_as_naoqi_sim(nao):
         memory.getData("NaoqiSim/Audio/Source") == "fake"
     )  # the live tier's fake source
     assert memory.getData("NaoqiSim/Audio/Channels") == "duplicate"
-    # Perception runs in the clients: naoqi-sim publishes no perception source.
-    assert "NaoqiSim/Perception/Source" not in memory.getDataListName()
+    # The face detection and people perception modules say whether an engine is behind them
+    # (specs/container/status-service.md); the live tier runs it.
+    assert memory.getData("NaoqiSim/Perception/Source") == "engine"
 
 
 def test_ready_means_the_replacements_answer(nao):

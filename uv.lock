@@ -159,7 +159,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "naoqi-viewer", marker = "extra == 'viewer'", git = "https://github.com/funwithagents/naoqi-viewer?rev=98bea7c6f97df80cf0123881d8b3765b12f38431" },
+    { name = "naoqi-viewer", marker = "extra == 'viewer'", git = "https://github.com/funwithagents/naoqi-viewer?rev=8d696b88f5722c2cf5fd81b86c7bb7820cd2ac3f" },
     { name = "numpy" },
     { name = "opencv-python-headless", marker = "extra == 'webcam'" },
     { name = "platformdirs" },
@@ -180,7 +180,7 @@ dev = [
 [[package]]
 name = "naoqi-viewer"
 version = "0.1.0"
-source = { git = "https://github.com/funwithagents/naoqi-viewer?rev=98bea7c6f97df80cf0123881d8b3765b12f38431#98bea7c6f97df80cf0123881d8b3765b12f38431" }
+source = { git = "https://github.com/funwithagents/naoqi-viewer?rev=8d696b88f5722c2cf5fd81b86c7bb7820cd2ac3f#8d696b88f5722c2cf5fd81b86c7bb7820cd2ac3f" }
 dependencies = [
     { name = "mujoco" },
     { name = "numpy" },

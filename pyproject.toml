@@ -67,7 +67,7 @@ explicit = true  # only the packages pinned to it below come from it
 [tool.uv.sources]
 qi = { index = "libqi" }
 # naoqi-viewer is not on PyPI yet (specs/project.md, open question 1): its repository, pinned.
-naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "98bea7c6f97df80cf0123881d8b3765b12f38431" }
+naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "8d696b88f5722c2cf5fd81b86c7bb7820cd2ac3f" }
 
 [tool.ruff]
 target-version = "py312"  # keep in sync with requires-python
@@ -99,6 +99,9 @@ extraPaths = [
     "docker/naoqi/services/audio-device",
     "docker/naoqi/services/audio-player",
     "docker/naoqi/services/status-service",
+    "docker/naoqi/services/face-detection",
+    "docker/naoqi/services/people-perception",
+    "docker/naoqi/services/perception-stubs",
     "docker/tts-engine",
 ]
 typeCheckingMode = "standard"

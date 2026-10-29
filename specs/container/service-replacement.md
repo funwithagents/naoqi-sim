@@ -56,7 +56,7 @@ A replacement takes the built-in's place in NAOqi's own boot. The entrypoint sta
 
 | | 2.1 | 2.8 |
 | --- | --- | --- |
-| Left out of the autoload copy | `audioout`, which provides both `ALTextToSpeech` and `ALAudioPlayer` | `audioplayer`, `ttsinterface` |
+| Left out of the autoload copy | `audioout`, which provides both `ALTextToSpeech` and `ALAudioPlayer`; `peopleperception` and the four libraries whose modularity processes chain to it ([people-perception.md](../services/people-perception.md), [perception-stubs.md](../services/perception-stubs.md)) | `audioplayer`, `ttsinterface`; `peopleperception` and the same four; `naoqi_sim_perception_sources` inserted after `modularityperception` |
 | Loads the autoload | `naoqi-bin`, in order, in-process | `naoqi-service` (the `system.Naoqi` package service `naoqi-bin`'s `ALServiceManager` starts), same |
 | Loaded after ours | The rest of the autoload: `behaviormanager` (its preloaded behaviors' boxes make their proxies as they load), `animatedspeech`, `dialog`, and the added built-ins ([naoqi-fidelity.md](naoqi-fidelity.md), "Matching a real NAOqi robot's modules") | The rest of the autoload, and the package services (`dialog`, `expressivity`, `life`...), which `ALServiceManager` starts beside `naoqi-service` |
 
@@ -72,8 +72,19 @@ An entry `foo` is `/opt/naoqi/lib/naoqi/libfoo.so`, the suite's module folder, w
 
 - **2.8's package services start beside `naoqi-service`, not after it.** `ALServiceManager` launches every autorun package service about 0.25 s before `naoqi-service`; they registered after our modules and bound to them in 6 boots out of 6 (measured Oct 14, 2026). A NAO 6 is in the same position: its `ttsinterface` sits in `naoqi-service`'s autoload as ours do, and its package services call it.
 - **Before Oct 14, 2026** the entrypoint let the built-ins load, called their `exit()`, loaded ours over `ALLauncher`, and relaunched (2.1) or restarted (2.8, `ALServiceManager`) every module holding a proxy to them. Each module missed showed as "module destroyed" (2.1's preloaded behaviors, then 2.8's `ALDialog`), and exiting a built-in during a slow 2.8 boot killed `naoqi-service`.
-- A name that no built-in holds (`ALAudioDevice` on both versions) is registered the same way, with nothing left out.
+- A name that no built-in holds (`ALAudioDevice`, `ALFaceDetection` on both versions) is registered the same way, with nothing left out.
+- **A library may register more than its name.** 2.8's `peopleperception` also registers the hidden `_UserIdentification`, which another package waits for silently; leaving a library out means serving every name it registered (measured Oct 29, 2026, by diffing the service list of a boot with the library left out against a normal boot's: the method that finds such names).
+- **A library may need another library's modularity process**, which no replacement can provide: the four vision modules chained to `PeoplePerception_process` fail to load without the built-in library, so they are left out and stubbed with it ([perception-stubs.md](../services/perception-stubs.md)). A library may also lose shared settings another loads: 2.8's tracking processes read `peopleperception_sources.mds`, which naoqi-sim loads itself from an autoload entry placed after `modularityperception` (the same file, "The tracking processes").
 - A replacement must carry whatever its callers connect to at start, not only the documented methods. On 2.8, `ALAnimatedSpeech` connects to `ALTextToSpeech`'s hidden signal `_started` and the process dies without it. The recording proxy and caller survey in [speech.md](../services/speech.md) are the method for finding these.
+
+### Overloads, structs and properties on a 2.8 qi service
+
+Measured Oct 29, 2026, on the perception survey stubs:
+
+- **Overloads are one varargs method.** A qi service registers one signature per method name, from the Python function's argument list; a method with defaults is registered at its full arity, so `subscribe(name)` from `ALBasicAwareness` failed against `subscribe(name, period=30, precision=0.0)` ("Arguments types did not match") and the awareness process died. `def subscribe(self, *args)` serves both calls. On 2.1 an `ALModule` keeps the explicit second binding (`BIND_PYTHON`).
+- **A struct reply needs its type declared.** A caller converting the reply to a qi struct (`_UserSessionManager` to its `RecognitionResult`) fails on a plain list; `qi.bind(returnType="(i[(Lfi)<RecognitionMatch,value,confidence,storage>])<RecognitionResult,status,matches>", paramsType=["i"])` on the method makes a tuple convert. The caller's expected signature appears in its error log ("will not be able to convert return type from ... to ...").
+- **Properties** are `qi.Property(signature)` instances set on the object before `registerService`; **signals** `qi.Signal(signature)` likewise. The methods are read at `registerService`: anything set on the class afterwards is not served.
+- A Python 2.7 function that `exec`s generated code may hold no generator expression with a free variable (the compiler refuses the `exec`); a list comprehension is fine.
 
 ### Calling services registered on the host
 

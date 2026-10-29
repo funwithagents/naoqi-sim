@@ -20,7 +20,7 @@ tests:
 
 ## Purpose
 
-The robot's head cameras as a host device ([devices.md](devices.md)). It feeds frames into `ALVideoDevice` so a client that subscribes to a camera gets images through `getImageRemote` as on a NAO, with NAO conventions: camera indices, resolutions, colorspace names, timestamps. Face, people and movement detection run in the clients on those frames, never in naoqi-sim ([_overview.md](../_overview.md), "Perception and speech recognition").
+The robot's head cameras as a host device ([devices.md](devices.md)). It feeds frames into `ALVideoDevice` so a client that subscribes to a camera gets images through `getImageRemote` as on a NAO, with NAO conventions: camera indices, resolutions, colorspace names, timestamps. naoqi-sim's own `ALFaceDetection` reads those frames back through the same API to detect faces ([face-detection.md](../services/face-detection.md)); the device never looks at them.
 
 No NAOqi service is replaced: `ALVideoDevice.putImage(camera, width, height, rgb)` is public, so the device is an ordinary qi client. Verified on 2.1 and 2.8: injected frames come back through `subscribeCamera`/`getImageRemote`.
 

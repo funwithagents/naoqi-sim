@@ -11,10 +11,11 @@ import pytest
 from ports import free_port
 
 from naoqi_sim import stack
+from naoqi_sim.config import NaoqiSettings, NaoqiSimConfig, PerceptionSettings
 from naoqi_sim.errors import DockerUnavailableError, NaoqiSimError
 from naoqi_sim.stack import ContainerState, NaoqiSimStatus
 
-STATUS = NaoqiSimStatus("0.0.1", "2.1.4.13", True, "none", "none")
+STATUS = NaoqiSimStatus("0.0.1", "2.1.4.13", True, "none", "none", "engine")
 
 
 @pytest.fixture
@@ -37,15 +38,23 @@ def test_nothing_running(docker, qi_reads):
 
 
 def test_a_ready_robot(docker, qi_reads):
-    docker.set(containers={"naoqi-sim-naoqi28": "healthy", "naoqi-sim-tts": "running"})
+    docker.set(
+        containers={
+            "naoqi-sim-naoqi28": "healthy",
+            "naoqi-sim-tts": "running",
+            "naoqi-sim-perception": "healthy",
+        }
+    )
 
     status = asyncio.run(stack.read_status())
 
     assert status.containers == [
         ContainerState("naoqi-sim-naoqi28", "naoqi28", "running", "healthy"),
+        ContainerState("naoqi-sim-perception", "perception", "running", "healthy"),
         ContainerState("naoqi-sim-tts", "tts", "running", ""),
     ]
     assert status.naoqi == STATUS and status.ready
+    assert STATUS.perception_source == "engine"  # what `naoqi-sim status` prints
     assert qi_reads == ["tcp://127.0.0.1:9559"]
 
 
@@ -62,11 +71,17 @@ def test_the_service_is_read_only_once_naoqi_is_healthy(docker, qi_reads, boot):
 
 def test_cleanup_removes_what_a_dead_run_left(docker, monkeypatch):
     monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", free_port())
-    docker.set(containers={"naoqi-sim-naoqi21": "healthy", "naoqi-sim-tts": "running"})
+    docker.set(
+        containers={
+            "naoqi-sim-naoqi21": "healthy",
+            "naoqi-sim-tts": "running",
+            "naoqi-sim-perception": "running",
+        }
+    )
 
     removed = asyncio.run(stack.cleanup())
 
-    assert removed == ["naoqi-sim-naoqi21", "naoqi-sim-tts"]
+    assert removed == ["naoqi-sim-naoqi21", "naoqi-sim-perception", "naoqi-sim-tts"]
     assert docker.read()["containers"] == {}
     assert any("--profile * down" in c for c in docker.calls)
     assert asyncio.run(stack.cleanup()) == []
@@ -90,6 +105,46 @@ def test_both_need_docker(docker):
         asyncio.run(stack.read_status())
     with pytest.raises(DockerUnavailableError):
         asyncio.run(stack.cleanup())
+
+
+def test_the_services_and_environment_follow_the_perception_switch():
+    on = NaoqiSimConfig(naoqi=NaoqiSettings(version="2.8"))
+    off = NaoqiSimConfig(perception=PerceptionSettings(enabled=False))
+    assert stack.services(on) == ["tts", "perception", "naoqi28"]
+    assert stack.services(off) == ["tts", "naoqi21"]
+    assert stack.compose_env(on)["NAOQI_SIM_PERCEPTION_URL"] == "http://perception:8080"
+    assert stack.compose_env(off)["NAOQI_SIM_PERCEPTION_URL"] == ""
+
+
+def test_a_status_without_the_perception_key_reads_none(monkeypatch):
+    # An image built before the perception modules has no NaoqiSim/Perception/Source key.
+    class Memory:
+        def getData(self, key):
+            if key.startswith("NaoqiSim/Perception"):
+                raise RuntimeError("ALMemory::getData\n\tData not found " + key)
+            return "render" if "Camera" in key else "fake"
+
+    class NaoqiSim:
+        def getVersion(self):
+            return "0.0.1"
+
+        def getNaoqiVersion(self):
+            return "2.1.4.13"
+
+        def isReady(self):
+            return True
+
+    class Session:
+        def service(self, name):
+            return Memory() if name == "ALMemory" else NaoqiSim()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(stack, "connect", lambda url=stack.URL: Session())
+    assert stack.read_naoqisim_status() == NaoqiSimStatus(
+        "0.0.1", "2.1.4.13", True, "render", "fake", "none"
+    )
 
 
 def test_a_failed_connect_is_not_retried():

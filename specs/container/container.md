@@ -138,15 +138,16 @@ Port 9559 is the only port, published on the host as `127.0.0.1:9559`.
 
 ### Compose
 
-`docker/compose.yaml` has three services:
+`docker/compose.yaml` has four services:
 
 - `tts`: the speech engine ([tts-engine.md](tts-engine.md)), native architecture, with the named volume `piper-voices` at `/voices` for the voices of the languages its image lacks, and a healthcheck on its `/health` (healthy once every installed language's voice is loaded).
+- `perception`: the perception engine ([perception-engine.md](perception-engine.md)), native architecture, image `naoqi-sim/perception:dev`, a healthcheck on its `/health` (healthy once its model is loaded); started by `NaoqiSim` only when `perception.enabled` ([config.md](../runtime/config.md)).
 - `naoqi21` (2.1, profile `2.1`).
 - `naoqi28` (2.8, profile `2.8`).
 
 Each NAOqi service sits behind its version's profile, with symmetric names (`naoqi21`/`naoqi28`, containers `naoqi-sim-naoqi21`/`naoqi-sim-naoqi28`), so a version is always named: `docker compose --profile 2.1 up -d tts naoqi21`. A bare `docker compose up` starts only `tts`.
 
-Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the engine at `http://tts:8080` (`NAOQI_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux): the host link at `NAOQI_SIM_HOST_LINK=host.docker.internal:9563` ([devices.md](../host/devices.md), "The host link"). `NAOQI_SIM_LANGUAGES` (the config's `speech.languages`, `English,French` when unset) goes to the `tts` service and the NAOqi one alike: the engine loads those voices, `ALTextToSpeech` lists them ([speech.md](../services/speech.md), "Language"). A NAOqi service depends on `tts` being started, not healthy: the two boot in parallel and `NaoqiSim.start()` waits for each ([api.md](../runtime/api.md), "Lifecycle"). `docker compose down` keeps the three volumes; `down -v` removes them, the voices included (the image's default voices remain).
+Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the speech engine at `http://tts:8080` (`NAOQI_SIM_TTS_URL`), the perception engine at `http://perception:8080` (`NAOQI_SIM_PERCEPTION_URL`, which `NaoqiSim` sets empty when the engine is off) and the host through `host.docker.internal` (`host-gateway` on Linux): the host link at `NAOQI_SIM_HOST_LINK=host.docker.internal:9563` ([devices.md](../host/devices.md), "The host link"). `NAOQI_SIM_LANGUAGES` (the config's `speech.languages`, `English,French` when unset) goes to the `tts` service and the NAOqi one alike: the engine loads those voices, `ALTextToSpeech` lists them ([speech.md](../services/speech.md), "Language"). A NAOqi service depends on `tts` being started, not healthy, and on nothing else (`perception` is optional): the containers boot in parallel and `NaoqiSim.start()` waits for each ([api.md](../runtime/api.md), "Lifecycle"). `docker compose down` keeps the three volumes; `down -v` removes them, the voices included (the image's default voices remain).
 
 ### Entrypoint
 
@@ -156,11 +157,11 @@ One script per version, each reading top to bottom as that version's procedure: 
 | --- | --- | --- |
 | `naoqi-bin` | `-b 0.0.0.0 -p 9559`: the broker is the public port | `--qi-listen-url tcp://127.0.0.1:9558`, behind the suite's gateway on 9559 |
 | Reached from inside on | `tcp://127.0.0.1:9559` | `tcp://127.0.0.1:9558`, exported as `NAOQI_SIM_INTERNAL_PORT` for our qi services |
-| `LEFT_OUT` (the replaced built-ins' autoload entries, commented out of the copy as `#replaced <entry>`) | `audioout` | `audioplayer ttsinterface` |
+| `LEFT_OUT` (the replaced built-ins' autoload entries, commented out of the copy as `#replaced <entry>`) | `audioout`; `peopleperception` and its modularity dependents `sittingpeopledetection engagementzones gazeanalysis wavingdetection` ([people-perception.md](../services/people-perception.md), [perception-stubs.md](../services/perception-stubs.md)) | `audioplayer ttsinterface`; `peopleperception` and the same four |
 | `OURS` (our autoload entries, right after `pythonbridge`, in order) | `naoqi_sim_audio_device_relay naoqi_sim_loader naoqi_sim_speech_front naoqi_sim_audio_player_front` | Same |
-| `MODULES` (our Python modules, which the loader loads in order; exported as `NAOQI_SIM_PYTHON_MODULES`, with `NAOQI_SIM_MODULES_DIR=/opt/naoqi/modules`) | `naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule` | `naoqi_sim_status_qiservice naoqi_sim_speech_qiservice naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice` |
-| `REPLACED` (the built-in names our fronts take) | `ALTextToSpeech ALAudioPlayer` | Same |
-| `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer` | Same |
+| `MODULES` (our Python modules, which the loader loads in order; exported as `NAOQI_SIM_PYTHON_MODULES`, with `NAOQI_SIM_MODULES_DIR=/opt/naoqi/modules`) | `naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule naoqi_sim_face_detection_almodule naoqi_sim_people_perception_almodule naoqi_sim_perception_stubs_almodule` | The same names with `_qiservice` |
+| `REPLACED` (the built-in names our modules take) | `ALTextToSpeech ALAudioPlayer ALPeoplePerception` | Same |
+| `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer ALFaceDetection`, and the stubs `ALEngagementZones ALGazeAnalysis ALSittingPeopleDetection` | The same, the stubs being `ALEngagementZones ALGazeAnalysis ALSittingPeopleDetection ALWavingDetection _UserIdentification`, and `_NaoqiSimPerceptionSources`, which loads the shared perception sources after `modularityperception`; `KEPT`, the suite's `_ALFastPersonTracking _ALFindPersonHead`, checked too ([perception-stubs.md](../services/perception-stubs.md), "The tracking processes") |
 | Added built-ins (entries a NAO autoloads that the desktop suite ships but does not; see [naoqi-fidelity.md](naoqi-fidelity.md), "Matching a real NAOqi robot's modules"), written into the copy | `expressiveness` after `behaviormanager`; `basicawareness autonomousblinking autonomousmoves` after `alpanoramacompass`, so before `autonomouslife`, as on a NAO. `BUILTINS`, the names they register, are checked: `_ALExpressiveness ALBasicAwareness _ALAutonomousBlinking ALAutonomousMoves` | None |
 | `LAST` (registered last at boot, waited for) | `ALDialog` (`dialog`, the last autoload entry) | `ALPanoramaCompass` (the last autoload entry) and the package services `ALAnimatedSpeech ALDialog ALAutonomousLife` |
 

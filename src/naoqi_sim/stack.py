@@ -37,6 +37,8 @@ class NaoqiSimStatus:
     ready: bool
     camera_source: str
     audio_source: str
+    # "engine" when the perception engine serves the modules, "none" when they find nobody
+    perception_source: str = "none"
 
 
 @dataclass(frozen=True)
@@ -63,22 +65,37 @@ class StackStatus:
 # --- The container steps of NaoqiSim.start() and stop() -------------------------------
 
 
-def up(config: NaoqiSimConfig) -> None:
-    """Start the `tts` service and the version's NAOqi service from the verified images."""
-    images = IMAGES[config.naoqi.version]
-    env = {
+def services(config: NaoqiSimConfig) -> list[str]:
+    """The compose services a config runs: the engines, then the version's NAOqi service."""
+    engines = ["tts", "perception"] if config.perception.enabled else ["tts"]
+    return [*engines, IMAGES[config.naoqi.version].service]
+
+
+def compose_env(config: NaoqiSimConfig) -> dict[str, str]:
+    """The environment every compose call of a run gets, from the config: the installed
+    languages, and the perception engine's URL, empty when the engine is off so the NAOqi
+    modules reach none (compose keeps an empty value as is)."""
+    return {
         **files.compose_env(),
         "NAOQI_SIM_LANGUAGES": ",".join(config.speech.languages),
+        "NAOQI_SIM_PERCEPTION_URL": docker_images.PERCEPTION_URL
+        if config.perception.enabled
+        else "",
     }
+
+
+def up(config: NaoqiSimConfig) -> None:
+    """Start the engines the config runs and the version's NAOqi service from the verified
+    images."""
+    images = IMAGES[config.naoqi.version]
     res = run(
         *images.compose(),
         "up",
         "-d",
         "--no-build",
-        "tts",
-        images.service,
+        *services(config),
         timeout=300,
-        env=env,
+        env=compose_env(config),
     )
     if res.returncode != 0:
         raise BootError(
@@ -87,8 +104,9 @@ def up(config: NaoqiSimConfig) -> None:
 
 
 def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> None:
-    """Until NAOqi is healthy, then until the speech engine is: the two boot in parallel, and
-    the engine's first use of a language downloads its voice, which NAOqi's boot usually hides."""
+    """Until NAOqi is healthy, then until the speech engine is, then until the perception engine
+    is when the config runs it: they boot in parallel, and the speech engine's first use of a
+    language downloads its voice, which NAOqi's boot usually hides."""
     images = IMAGES[config.naoqi.version]
     docker_images.wait_healthy(
         images, timeout=config.naoqi.ready_timeout_s, abort=abort
@@ -99,6 +117,10 @@ def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> 
         timeout=config.naoqi.ready_timeout_s,
         abort=abort,
     )
+    if config.perception.enabled:
+        docker_images.wait_perception(
+            images, timeout=config.naoqi.ready_timeout_s, abort=abort
+        )
 
 
 def down(version: str) -> None:
@@ -158,12 +180,17 @@ def read_naoqisim_status(url: str = URL) -> NaoqiSimStatus:
     try:
         naoqisim = session.service("NaoqiSim")
         memory = session.service("ALMemory")
+        try:
+            perception_source = memory.getData("NaoqiSim/Perception/Source")
+        except RuntimeError:  # an image built before the perception modules
+            perception_source = "none"
         return NaoqiSimStatus(
             version=naoqisim.getVersion(),
             naoqi_version=naoqisim.getNaoqiVersion(),
             ready=bool(naoqisim.isReady()),
             camera_source=memory.getData("NaoqiSim/Camera/Source"),
             audio_source=memory.getData("NaoqiSim/Audio/Source"),
+            perception_source=str(perception_source),
         )
     finally:
         session.close()

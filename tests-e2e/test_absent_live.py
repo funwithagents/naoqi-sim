@@ -3,14 +3,14 @@ not ship them (perception, recognition, photo and video capture, infrared, the t
 left out on purpose (`ALSystem`, whose absence tells a client the target is not a robot;
 specs/container/naoqi-fidelity.md, "Matching a real NAOqi robot's modules"). A client calling one gets an error, as
 on any target without it. A box that needs one cannot run on naoqi-sim
-(plans/202610132100_api-coverage-from-boxes.md)."""
+(plans/202610132100_api-coverage-from-boxes.md). `ALFaceDetection` is not among them since
+Oct 29, 2026: naoqi-sim adds it (specs/services/face-detection.md)."""
 
 import pytest
 
 ABSENT = {
     "ALSystem",
     "ALSpeechRecognition",
-    "ALFaceDetection",
     "ALFaceCharacteristics",
     "ALLandMarkDetection",
     "ALVisionRecognition",
