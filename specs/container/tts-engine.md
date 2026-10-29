@@ -43,11 +43,11 @@ One voice per language from `rhasspy/piper-voices` v1.0.0, medium quality, singl
 
 **Licensing posture (settled Oct 26, 2026).** A Piper voice carries no licence of its own: its model card states the licence of the dataset it was trained on, and a training note names the base model it was fine-tuned from. Nearly every medium voice is fine-tuned from `en_US-lessac`, whose dataset (Blizzard 2013) is research-only. Whether fine-tuned weights inherit that restriction is unsettled; the Piper project imposes no licence on its voices and leaves the judgement to the user. naoqi-sim's rule: **the voice's own dataset licence decides, the lineage is recorded**, and a voice whose own dataset is non-commercial, unknown or copyleft is never offered. "A" below is trained from scratch on permissive data; "B" is fine-tuned from lessac on a permissive dataset. A user who needs the strict set can take the "A" voices from this table (English and Swedish as they are; French, German and Dutch have from-scratch `mls` voices, multi-speaker and rougher, not chosen).
 
-| NAOqi name | Voice | Dataset licence | Tier |
-|---|---|---|---|
-| English | `en_US-ljspeech-medium` | public domain (LJ Speech) | A |
-| French | `fr_FR-siwis-medium` | CC BY 4.0 | B |
-| German | `de_DE-thorsten-medium` | CC0 | B |
+| NAOqi name | Voice | Dataset licence | Tier | Pitch |
+|---|---|---|---|---|
+| English | `en_US-ljspeech-medium` | public domain (LJ Speech) | A | 1.15 |
+| French | `fr_FR-siwis-medium` | CC BY 4.0 | B | 1.15 |
+| German | `de_DE-thorsten-medium` | CC0 | B | |
 | Dutch | `nl_NL-pim-medium` | CC0 | B |
 | Swedish | `sv_SE-nst-medium` | CC0 | A |
 | Spanish | `es_ES-davefx-medium` | CC0 | B |
@@ -71,7 +71,7 @@ Of NAOqi's 21 languages, five are not offered: Arabic and Chinese (their Piper v
   - `{"type": "mark", "id": N}`
   - `{"type": "pause", "ms": N}`
 
-  The reply is `{"duration": s, "marks": {"N": offset_s}, "rate": sample_rate, "engine": voice, "synth_time": s}`, `engine` naming the voice used; for a say a `/stop` cancelled before it played, `{"duration": 0, "marks": {}, ..., "stopped": true}`. A `language` that is not installed: 400 `{"error": ...}`; none: the first installed. On a synthesis error: 500 `{"error": ...}`. `pitch` is accepted and ignored.
+  The reply is `{"duration": s, "marks": {"N": offset_s}, "rate": sample_rate, "engine": voice, "synth_time": s}`, `engine` naming the voice used; for a say a `/stop` cancelled before it played, `{"duration": 0, "marks": {}, ..., "stopped": true}`. A `language` that is not installed: 400 `{"error": ...}`; none: the first installed. On a synthesis error: 500 `{"error": ...}`. `pitch` (percent, 100 = the voice as the table pitches it) multiplies the voice's pitch factor (below).
 - `POST /stop {"id": <say id>}`: cancels that say wherever it is (the synthesis stops at the next item and the say is answered `stopped` with no audio; a say that has rendered but not started playing is not played; a say that has not arrived yet is cancelled when it does, the last 64 stopped ids being kept), stops the stream in progress and sends a stop of the `speech` stream to the audio output, so the sounds `ALAudioPlayer` plays go on. Returns `{"stopped": true}`. Without an `id`, only the stream and the audio output are stopped. The `ALTextToSpeech` replacement names the call's id in both `/say` and `/stop` ([speech.md](../services/speech.md), "Stop").
 - `GET /health`: `{"ok", "languages": {name: {"voice", "loaded"}}, "voices_tag", "soundcard"}`, 200 once every installed language's voice is loaded, 503 before (the healthcheck's probe).
 
@@ -80,6 +80,7 @@ Of NAOqi's 21 languages, five are not offered: Arabic and Chinese (their Piper v
 - Each text item is synthesized on its own and the parts are concatenated, so a marker's offset is exactly the duration of everything before it. The cost is a small prosody break at each marker.
 - A pause item is silence of the given length. Offsets and durations are computed from sample counts, so they match the audio exactly.
 - `rate` (percent, 100 = normal): Piper's `length_scale = 100 / max(rate, 20)`.
+- **Pitch, by resampling.** Piper has no pitch control, so a voice is pitched the way a NAO's own voice is, a pitched-up adult one: the text is synthesized slower by a factor (`length_scale` times it) and the audio is played faster by the same factor (resampled, the same linear interpolation as below), so its pitch and its formants both rise by the factor and the speech keeps its length. Pitch and timbre move together (the formants cannot be held, as a vocoder would), which is what turns a woman's voice into a child's rather than into a higher woman's; past about 1.35 the formants overshoot any human throat. The factor is the voice's own (`PITCH`: 1.15 for the English and French voices, chosen by ear on Oct 29, 2026 among resampling and vocoder variants; 1.0, nothing, for the others) times the say's `pitch` / 100 (the NAOqi side's `pitchShift` and `\vct`, [speech.md](../services/speech.md)), kept within 0.5 to 4 (a NAO's `pitchShift` goes to 4). No dependency, no measurable cost; the marker offsets are measured on the audio as it will play.
 - The output is mono s16le at the first text item's sample rate (22050 Hz for every voice in the table; 22050 when there is no text). Other parts are resampled by linear interpolation.
 - The reply is sent as soon as synthesis is done. The PCM is streamed to the audio output in a background thread, in 100 ms chunks, as its `speech` stream (`"stream": "speech"` in the `play` header, [audio-output.md](../host/audio-output.md), "Protocol"), so the caller's clock starts with the audio and sounds mix with it.
 - Synthesis takes 0.1–0.3 s per sentence once the voices are loaded.
@@ -98,5 +99,5 @@ Of NAOqi's 21 languages, five are not offered: Arabic and Chinese (their Piper v
 
 1. **More languages.** Adding one of the five missing languages means a Piper voice with a permissive dataset, which none has today; a non-commercial voice could come as an opt-in tier, fetched after a typed acceptance as naoqi-viewer fetches the NAO meshes, never by default. A per-language voice override in the config (a NAO's `setVoice`) is a later addition if anyone wants it.
 2. **Word events.** `CurrentWord` and `PositionOfCurrentWord` would need per-word timings; Piper 1.8 can return phoneme alignments, not words. Not in v1.
-3. **Pitch.** `\vct` and `pitchShift` are no-ops with Piper. A pitch shift of the PCM (resampling) is a cheap approximation if a client turns out to depend on it.
+3. **Pitch.** Settled Oct 29, 2026 by resampling ("Rendering"). A vocoder (WORLD, `pyworld`, MIT) would move the pitch and the formants apart, and could add a NAO's `doubleVoice` effects and breathiness; rendered and listened to, not chosen. The other languages' voices keep their adult pitch until someone listens to them.
 4. **Stop and concurrent streams.** Settled by the ids (Oct 16, 2026): a `/stop` names its say, so one racing a new `/say` cancels that say and no other, whether it arrives before or after it. The global flag remains for an idless `/stop`.

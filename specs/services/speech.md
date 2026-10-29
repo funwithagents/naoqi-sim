@@ -88,7 +88,7 @@ Only a C++ `ALModule` serves `post`/`pCall`, `wait(id)`, `stop(id)` and `isRunni
   - Rate and pitch apply to the whole call (the value in force at the end of the text) and carry over to later calls, like NAOqi's.
 - **Parameters**:
   - `setParameter("speed"|"defaultVoiceSpeed", N)` sets the rate (percent).
-  - `setParameter("pitchShift", x)` sets the pitch (x times 100 when x < 10). The pitch is carried to the engine and ignored there: Piper has none ([tts-engine.md](../container/tts-engine.md), open questions), so `\vct` and `pitchShift` are no-ops that round-trip through `getParameter`.
+  - `setParameter("pitchShift", x)` sets the pitch (x times 100 when x < 10). The engine multiplies the voice's own pitch factor by it ([tts-engine.md](../container/tts-engine.md), "Rendering": the English and French voices are pitched up by 1.15 to a child's, as a NAO's voice is a pitched-up adult one), so `pitchShift 1.0` and `\vct=100\` are the voice as it is and `pitchShift 2.0` an octave above, within the engine's 0.5 to 4.
   - `resetSpeed` sets the rate back to 100.
 - **Language**: two lists, as on a NAO, which has one or two language packs installed out of the twenty-one NAOqi knows:
   - `getSupportedLanguages` answers NAOqi's own list (`naoqi_sim_speech_core.SUPPORTED_LANGUAGES`: Arabic, Brazilian, Chinese, Czech, Danish, Dutch, English, Finnish, French, German, Greek, Italian, Japanese, Korean, Norwegian, Polish, Portuguese, Russian, Spanish, Swedish, Turkish, as the 2.8 documentation's "Supported languages" page lists them for `ALTextToSpeech`; 2.1 is taken to be the same list, still to confirm on a robot), whatever is installed.
