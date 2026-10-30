@@ -20,13 +20,23 @@ DOCKERFILE = (
 )
 
 
+class Calls(list[tuple[str, str]]):
+    """The (language, text) of each synthesis, and the pitch each was given."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pitches: list[float] = []
+
+
 @pytest.fixture
 def synth(monkeypatch):
     """A fake Piper: a text item "<seconds>@<rate>" synthesizes that many seconds at that rate."""
-    calls: list[tuple[str, str]] = []
+    calls = Calls()
+    pitches = calls.pitches
 
-    def synthesize(text, lang, rate):
+    def synthesize(text, lang, rate, pitch=100):
         calls.append((lang, text))
+        pitches.append(pitch)
         seconds, sr = text.split("@")
         return (
             np.full(round(float(seconds) * int(sr)), 1000, dtype=np.int16),
@@ -197,6 +207,46 @@ def test_a_say_in_a_language_not_installed_is_refused_unsynthesized(synth, monke
     assert used == "en_US-ljspeech-medium" and synth == [("English", "0.1@22050")]
 
 
+# -- pitch ---------------------------------------------------------------------
+
+
+def test_the_english_and_french_voices_are_pitched_up_the_others_not():
+    assert server.pitch_factor("English", 100) == pytest.approx(1.15)
+    assert server.pitch_factor("French", 100) == pytest.approx(1.15)
+    assert server.pitch_factor("German", 100) == 1.0
+    assert server.pitch_factor("Turkish", None) == 1.0
+
+
+def test_the_says_pitch_multiplies_the_voices_within_a_naos_range():
+    assert server.pitch_factor("English", 200) == pytest.approx(2.3)  # \vct=200\
+    assert server.pitch_factor("German", 150) == pytest.approx(1.5)  # pitchShift 1.5
+    assert server.pitch_factor("English", 400) == 4.0  # pitchShift 4, the top
+    assert server.pitch_factor("German", 10) == 0.5
+
+
+def test_shifting_plays_the_audio_faster_by_the_factor():
+    t = np.arange(22050) / 22050.0  # 1 s of a 220 Hz tone
+    tone = (10000 * np.sin(2 * np.pi * 220 * t)).astype(np.int16)
+
+    shifted = server.shift(tone, 1.15)
+
+    assert len(shifted) == pytest.approx(22050 / 1.15, abs=1)
+    spectrum = np.abs(np.fft.rfft(shifted.astype(np.float64)))
+    peak_hz = np.argmax(spectrum) * 22050 / len(shifted)
+    assert peak_hz == pytest.approx(220 * 1.15, abs=3)  # a 253 Hz tone now
+    assert server.shift(tone, 1.0) is tone
+
+
+def test_the_pitch_reaches_the_synthesis_and_the_marks_follow_the_shifted_audio(synth):
+    pcm, _, marks, _ = server.render(
+        {"pitch": 150, "items": [text("1.0@22050"), mark(1), text("0.5@22050")]}
+    )
+
+    assert synth.pitches == [150, 150]
+    assert marks == {"1": 1.0}  # offsets are measured on the audio as it will play
+    assert len(pcm) == int(1.5 * 22050)
+
+
 # -- rendering -----------------------------------------------------------------
 
 
@@ -267,9 +317,9 @@ def test_a_stop_naming_the_say_cancels_it_between_items(synth, monkeypatch):
     synthesized and the say is reported stopped."""
     real = server.synth_piper
 
-    def stopping(text, lang, rate):
+    def stopping(text, lang, rate, pitch=100):
         server.stop_say(7)  # the /stop lands during this item's synthesis
-        return real(text, lang, rate)
+        return real(text, lang, rate, pitch)
 
     monkeypatch.setattr(server, "synth_piper", stopping)
     with pytest.raises(server.Cancelled):

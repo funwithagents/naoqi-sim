@@ -4,7 +4,8 @@ POST /say   {"id": <say id>, "language": "English", "rate": 100, "pitch": 100,
              "items": [{"type":"text","text":"Hello"}, {"type":"mark","id":1}, {"type":"pause","ms":500}]}
         ->  {"duration": s, "marks": {"1": offset_s}, "rate": 22050, "engine": "en_US-ljspeech-medium"}
             The PCM is streamed to the host audio output (NAOQI_SIM_SOUNDCARD) after the reply.
-            `pitch` is accepted and ignored (Piper has none). 400 for a language not installed.
+            `pitch` (percent) multiplies the voice's own pitch factor (PITCH): the voice is
+            synthesized slower and played faster by it. 400 for a language not installed.
 POST /stop  {"id": <say id>}: cancels that say (synthesizing, about to play, or not yet arrived),
             stops streaming and asks the audio output to stop the speech stream.
 GET  /health  200 once every installed language's voice is loaded, 503 until then.
@@ -61,6 +62,13 @@ VOICES = {
 }
 # Their voices are in the image (the Dockerfile fetches exactly these); the config's default too.
 DEFAULT_LANGUAGES = ("English", "French")
+# A voice's pitch factor: the voice is synthesized slower by it and played faster by it, so
+# its pitch and its formants both rise by it and the speech keeps its length, as a NAO's own
+# voice is a pitched-up adult one. 1.15 (chosen by ear, Oct 29, 2026) turns the English and
+# French voices from a woman's into a child's; the others are left as they are. A say's
+# `pitch` (percent: NAOqi's pitchShift and \vct) multiplies it, within PITCH_RANGE.
+PITCH = {"English": 1.15, "French": 1.15}
+PITCH_RANGE = (0.5, 4.0)  # a NAO's pitchShift goes to 4
 BUILTIN_DIR = os.environ.get("NAOQI_SIM_BUILTIN_VOICES", "/voices-builtin")
 VOICE_DIR = os.environ.get("NAOQI_SIM_VOICES", "/voices")  # the volume
 SOUNDCARD = os.environ.get("NAOQI_SIM_SOUNDCARD", "host.docker.internal:9562")
@@ -194,18 +202,32 @@ def health():
 # --- Synthesis ---------------------------------------------------------------------------
 
 
-def synth_piper(text, language, rate):
+def pitch_factor(language, pitch):
+    """The factor the language's voice is pitched up by: its own (PITCH) times the say's
+    `pitch` (percent, 100 = as the voice is), kept within PITCH_RANGE."""
+    factor = PITCH.get(language, 1.0) * float(pitch or 100) / 100.0
+    return min(max(factor, PITCH_RANGE[0]), PITCH_RANGE[1])
+
+
+def shift(pcm, factor):
+    """`pcm` played `factor` times faster: pitch and formants up by `factor`, the length
+    divided by it (the synthesis was slowed by the same factor, so it comes out unchanged)."""
+    return pcm if factor == 1.0 else resample(pcm, factor, 1.0)
+
+
+def synth_piper(text, language, rate, pitch=100):
     voice = piper_voice(language)
     sr = voice.config.sample_rate
     from piper import SynthesisConfig
 
-    cfg = SynthesisConfig(length_scale=100.0 / max(rate, 20))
+    factor = pitch_factor(language, pitch)
+    cfg = SynthesisConfig(length_scale=factor * 100.0 / max(rate, 20))
     chunks = [
         np.frombuffer(ch.audio_int16_bytes, dtype=np.int16)
         for ch in voice.synthesize(text, cfg)
     ]
     pcm = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.int16)
-    return pcm, sr, VOICES[language]
+    return shift(pcm, factor), sr, VOICES[language]
 
 
 def resample(pcm, sr_from, sr_to):
@@ -224,6 +246,7 @@ def render(req):
     if lang not in LANGUAGES:
         raise UnknownLanguage(lang)
     rate = float(req.get("rate") or 100)
+    pitch = float(req.get("pitch") or 100)
     say_id = req.get("id")
     parts, marks, sr, used = [], {}, None, VOICES[lang]
     total = 0.0
@@ -235,7 +258,7 @@ def render(req):
             text = (item.get("text") or "").strip()
             if not text:
                 continue
-            pcm, sr_i, used = synth_piper(text, lang, rate)
+            pcm, sr_i, used = synth_piper(text, lang, rate, pitch)
             if sr is None:
                 sr = sr_i
             pcm = resample(pcm, sr_i, sr)
