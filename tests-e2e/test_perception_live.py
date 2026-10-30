@@ -13,6 +13,9 @@ from support import known_issue
 
 WORLD = 1  # ALMotion's FRAME_WORLD
 TOP_CAMERA = "CameraTop"
+# How long a face takes to cross 0.6 rad. The head only starts once the face is about 0.13 rad off
+# centre, so a crossing in 1.5 s left the frame (0.53 rad to each side) and the person was lost.
+FACE_CROSSING_S = 4.0
 FACE_AHEAD = (
     1.0,
     0.3,
@@ -280,12 +283,12 @@ def test_awareness_follows_a_face_that_moves(nao, standing):
         nao.sim.props.place(
             state.name,
             (math.cos(-0.3), math.sin(-0.3), camera_z),
-            duration=1.5,
+            duration=FACE_CROSSING_S,
             frame="robot",
         )
         wait_until(
             lambda: motion.getAngles("HeadYaw", True)[0] < -0.12,
-            8.0,
+            FACE_CROSSING_S + 8.0,
             "the head following the face to the other side",
         )
         assert nao.service("ALTracker").isTargetLost() is False
