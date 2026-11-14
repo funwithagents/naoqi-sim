@@ -2,7 +2,7 @@
 
 naoqi-sim is a NAO in a box. NAOqi (`naoqi-bin` from the user's own Choregraphe suite, 2.1.4.13 or 2.8.7.4) runs in a local Docker container, and override modules loaded inside it replace the services a desktop virtual robot lacks, so the container behaves like a NAO in its API on `127.0.0.1:9559`. Any qi client (Choregraphe, existing scripts, client libraries) connects to it exactly as it would to a NAO, with no naoqi-sim-specific code.
 
-It is unofficial and MIT-licensed, not affiliated with Aldebaran, and ships no Aldebaran assets.
+It is unofficial and Apache-2.0-licensed, not affiliated with Aldebaran, and ships no Aldebaran assets.
 
 This overview is the map of the whole project and the authority for naoqi-sim. Each concept gets its own spec (see [_index.md](_index.md)) when work on it starts; until then, its section here is the reference. Sections whose concept has a spec only summarize it and link to it.
 
@@ -72,7 +72,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 
 ## Licensing
 
-The code is MIT. Nothing from Aldebaran is in the repository, a package or a published image:
+The code is Apache-2.0. Nothing from Aldebaran is in the repository, a package or a published image:
 
 | Asset | Source | How naoqi-sim uses it |
 | --- | --- | --- |
