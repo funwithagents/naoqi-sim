@@ -25,7 +25,7 @@ It is its own container because:
 ### Engine: Piper, only
 
 - Piper (`piper-tts`, onnxruntime), pinned. No eSpeak NG path any more (dropped Oct 26, 2026: it was never justified, and its one feature a NAO has, pitch, is not worth a second code path); eSpeak NG is still inside Piper, as its phonemizer. No torch, no cloud.
-- **Licensing.** `piper-tts` is GPL-3.0-or-later (it embeds eSpeak NG, GPL-3.0); naoqi-sim is MIT. The engine's container is a GPL-governed combination built on the user's machine and never pushed, and naoqi-sim distributes the recipe, not the image, so the project's own licence is unaffected ([_overview.md](../_overview.md), "Licensing"). The voices are governed by their own terms (below).
+- **Licensing.** `piper-tts` is GPL-3.0-or-later (it embeds eSpeak NG, GPL-3.0); naoqi-sim is Apache-2.0. The engine's container is a GPL-governed combination built on the user's machine and never pushed, and naoqi-sim distributes the recipe, not the image, so the project's own licence is unaffected ([_overview.md](../_overview.md), "Licensing"). The voices are governed by their own terms (below).
 
 ### Languages
 
