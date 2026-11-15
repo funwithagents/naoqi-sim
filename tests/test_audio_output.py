@@ -301,7 +301,7 @@ def test_volume_and_pan_from_the_play_header(memory):
     assert (left, right) == (125, 250)  # balance: the left at 1 - pan, the right whole
 
 
-def test_pause_holds_a_stream_and_resume_lets_it_go_on(memory):
+def test_pause_holds_a_stream_and_resume_lets_it_go_on(memory, lateness):
     t0 = time.monotonic()
     done = memory.play_async(0.5, stream="player:2")
     time.sleep(0.15)
@@ -312,10 +312,11 @@ def test_pause_holds_a_stream_and_resume_lets_it_go_on(memory):
 
     [p] = playbacks(memory)
     assert not p.interrupted and p.pcm == tone(0.5)  # nothing lost
-    assert time.monotonic() - t0 == pytest.approx(0.5 + 0.4, abs=0.2)
+    # Two late wake-ups can lengthen the run: this test's 0.4 s pause, and the mixer's resume.
+    assert time.monotonic() - t0 == pytest.approx(0.5 + 0.4, abs=0.2 + 2 * lateness())
 
 
-def test_streams_mix_into_one_run_and_quiet_ends_it(memory):
+def test_streams_mix_into_one_run_and_quiet_ends_it(memory, lateness):
     a = memory.play_async(0.4, stream="speech")
     time.sleep(0.2)
     memory.play(0.4, stream="player:1")  # joins the running mix
@@ -324,7 +325,8 @@ def test_streams_mix_into_one_run_and_quiet_ends_it(memory):
     memory.play(0.2, stream="speech")  # after silence: a new run
 
     first, second = mixes(memory)
-    assert first.duration_s == pytest.approx(0.6, abs=0.1)
+    # player:1 joins after this test's 0.2 s sleep, which a slow machine wakes late.
+    assert first.duration_s == pytest.approx(0.6, abs=0.1 + lateness())
     assert second.duration_s == pytest.approx(0.2, abs=TICK_S)
 
 
@@ -397,7 +399,8 @@ def test_playing_until_follows_the_mix(memory, lateness):
     time.sleep(0.4)
     # The mix is fed a tick ahead: it covers now, unless this machine woke the mixer late.
     assert output.playing_until > time.monotonic() - lateness()
-    assert output.playing_until == pytest.approx(t0 + 0.4, abs=0.15)  # a tick ahead
+    # A tick ahead of now, and now is t0 + 0.4 plus this test's own late wake-up.
+    assert output.playing_until == pytest.approx(t0 + 0.4, abs=0.15 + lateness())
     wait_for(lambda: done)
     assert output.playing_until == pytest.approx(t0 + 1.0, abs=0.15)
     assert output.playing_until <= time.monotonic()
