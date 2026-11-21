@@ -47,6 +47,8 @@ class Status(object):
         # perception-stubs.md): `none` and no stub until then
         insert(PREFIX + "Perception/Source", NONE)
         insert(PREFIX + "Perception/Stubs", "")
+        # ALSpeechRecognition overwrites it at its load (specs/services/speech-recognition.md)
+        insert(PREFIX + "SpeechRecognition/Source", NONE)
         raise_event(PREFIX + "Ready", 0)
 
     def set_ready(self):

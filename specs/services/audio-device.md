@@ -65,6 +65,10 @@ The formats are those of NAOqi's documentation (the 2.1 suite's offline docs, `a
 - **A name registered again.** The relay keeps a proxy per subscriber name, which reaches the service that held the name when it was made: if a client registers a new service under the same name, the old proxy reaches a destroyed module. So the relay is told to forget a name's proxy on every `unsubscribe` and every `subscribe` (also of a name still subscribed, for a client that died without unsubscribing and registered again), and the next delivery reaches the service holding the name then. Both versions deliver through the relay; the module's own `qi.Session` only finds the relay and checks that a name exists, asking for the service each time, so it keeps no handle to a subscriber. (Found by a client's live tests: before this, every other session of a client reusing its name was deaf.)
 - **No host source.** With no host link, or while the host has no source (`NaoqiSim/Audio/Source` is `none`), subscriptions are accepted and nothing is delivered.
 
+### In-process listeners
+
+Another module of ours in the same process (the speech recognition, [speech-recognition.md](speech-recognition.md)) takes the microphones without a qi call per buffer: `listen(name, sampleRate, channels, deliver)` on the core, a format as `setClientPreferences` takes it, gives `deliver(nbOfChannels, nbOfSamplesByChannel, timeStamp, buffer)` each buffer of that format on a thread of its own, with the same queue and dropping as a subscriber; `unlisten(name)` stops it. A listener counts in the formats asked of the host, is not a qi subscriber, and an error it raises is logged and costs it nothing. It is not part of `ALAudioDevice`'s API.
+
 ### Chunks
 
 The host cuts the buffers ([audio-input.md](../host/audio-input.md), "Chunks"); the module passes them on as they come. Provisionally 4096 samples per channel at 48 kHz and 1365 at 16 kHz (about 85 ms), the values clients report from NAO robots; the 2.1 docs say 170 ms (open question 1).
