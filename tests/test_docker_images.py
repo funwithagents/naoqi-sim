@@ -12,6 +12,7 @@ import pytest
 from naoqi_sim import docker_images, suite
 from naoqi_sim.cli import main
 from naoqi_sim.docker_images import (
+    ASR_IMAGE,
     IMAGES,
     PERCEPTION_IMAGE,
     TTS_IMAGE,
@@ -87,10 +88,11 @@ def test_built_and_verified_images_pass_the_check(docker, image_data):
         "naoqi-sim/naoqi:2.1.4.13": built,
         TTS_IMAGE: built,
         PERCEPTION_IMAGE: built,
+        ASR_IMAGE: built,
     }
-    # The verification boot ran the three containers, and was taken down again.
+    # The verification boot ran the four containers, and was taken down again.
     [up] = [c for c in docker.calls if " up " in c]
-    assert up.endswith("up -d tts perception naoqi21")
+    assert up.endswith("up -d tts perception asr naoqi21")
     assert docker.read()["containers"] == {}
     # 2.8 was not asked for: it is neither built nor verified.
     with pytest.raises(
@@ -103,8 +105,12 @@ def test_no_versions_means_all_of_them(docker, image_data):
     build(image_data=image_data)
     check_images("2.1", image_data)
     check_images("2.8", image_data)
-    assert any("--profile 2.1 build tts perception naoqi21" in c for c in docker.calls)
-    assert any("--profile 2.8 build tts perception naoqi28" in c for c in docker.calls)
+    assert any(
+        "--profile 2.1 build tts perception asr naoqi21" in c for c in docker.calls
+    )
+    assert any(
+        "--profile 2.8 build tts perception asr naoqi28" in c for c in docker.calls
+    )
 
 
 def test_an_image_that_does_not_boot_is_not_verified(docker, image_data):
@@ -202,10 +208,36 @@ def test_a_perception_engine_still_loading_times_out(docker, image_data, monkeyp
         build("2.1", image_data=image_data)
 
 
+def test_a_speech_recognition_engine_that_cannot_load_its_models_fails_the_verification(
+    docker, image_data, monkeypatch
+):
+    docker.set(asr_health="exited")
+    with pytest.raises(BootError, match="speech recognition engine did not start"):
+        build("2.1", image_data=image_data)
+    assert any(c.endswith(" down") for c in docker.calls)
+    with pytest.raises(ImagesMissingError, match="not verified"):
+        check_images("2.1", image_data)
+    monkeypatch.setattr(docker_images, "ASR_TIMEOUT", 0.05)
+    docker.set(asr_health="starting")
+    with pytest.raises(BootError, match="speech recognition engine not healthy after"):
+        build("2.1", image_data=image_data)
+
+
+def test_the_speech_recognition_image_is_required_whatever_the_config(
+    docker, image_data
+):
+    build("2.1", image_data=image_data)
+    state = docker.read()
+    del state["images"][ASR_IMAGE]
+    docker.write(state)
+    with pytest.raises(ImagesMissingError, match=f"{ASR_IMAGE} is not built"):
+        check_images("2.1", image_data)
+
+
 def test_the_perception_image_is_required_even_when_a_config_runs_no_engine(
     docker, image_data
 ):
-    # A start checks the three images whatever the config says (api.md, "Images").
+    # A start checks the four images whatever the config says (api.md, "Images").
     build("2.1", image_data=image_data)
     state = docker.read()
     del state["images"][PERCEPTION_IMAGE]

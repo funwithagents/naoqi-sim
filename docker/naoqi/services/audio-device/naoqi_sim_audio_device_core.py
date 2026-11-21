@@ -169,6 +169,7 @@ class AudioDevice(object):
         self._lock = threading.RLock()
         self._preferences = {}
         self._subscribers = {}
+        self._listeners = {}  # in-process listeners (another module of ours), by name
         self._energy_on = False
         self._energy = dict((mic, 0.0) for mic in MICS)
         self.output_volume = 50
@@ -237,6 +238,36 @@ class AudioDevice(object):
             except Exception as e:  # the relay keeps a stale proxy: the next subscribe retries
                 self._log("%s: the relay could not forget its proxy (%s)" % (name, e))
 
+    # --- In-process listeners ------------------------------------------------------------------
+
+    def listen(self, name, sample_rate, channels, deliver):
+        """Hands another module of ours, in this process, the buffers of a format (as
+        setClientPreferences takes it) with no qi call: deliver(nbOfChannels,
+        nbOfSamplesByChannel, timeStamp, buffer) on a thread of its own, the oldest buffer
+        dropped when it falls behind. Listening again under a name replaces the previous one."""
+        fmt = parse_preferences(sample_rate, channels, False)
+        log = self._log
+
+        def call(_name, *item):
+            try:
+                deliver(*item)
+            except Exception as e:  # a listener's error is its own: keep delivering
+                log("%s: listener raised %r" % (name, e))
+
+        with self._lock:
+            old = self._listeners.pop(name, None)
+            self._listeners[name] = Subscriber(name, fmt, call, lambda n: None, log)
+        if old is not None:
+            old.stop()
+        self.link.send_need()
+
+    def unlisten(self, name):
+        with self._lock:
+            sub = self._listeners.pop(name, None)
+        if sub is not None:
+            sub.stop()
+            self.link.send_need()
+
     # --- Energy -------------------------------------------------------------------------------
 
     def enable_energy(self):
@@ -259,7 +290,8 @@ class AudioDevice(object):
     def need(self):
         """The need message: the distinct formats the subscribers need, and the energy flag."""
         with self._lock:
-            formats = sorted(set(sub.format for sub in self._subscribers.values()))
+            subs = list(self._subscribers.values()) + list(self._listeners.values())
+            formats = sorted(set(sub.format for sub in subs))
             return {
                 "type": "need",
                 "formats": [format_header(f) for f in formats],
@@ -274,7 +306,8 @@ class AudioDevice(object):
             fmt = format_of(header["format"])
             item = (int(header["channels"]), int(header["samples"]), stamp, payload)
             with self._lock:
-                targets = [s for s in self._subscribers.values() if s.format == fmt]
+                subs = list(self._subscribers.values()) + list(self._listeners.values())
+                targets = [s for s in subs if s.format == fmt]
             for sub in targets:
                 sub.put(item)
         elif kind == "energy":
@@ -286,8 +319,9 @@ class AudioDevice(object):
     def close(self):
         self.link.close()
         with self._lock:
-            subs = list(self._subscribers.values())
+            subs = list(self._subscribers.values()) + list(self._listeners.values())
             self._subscribers.clear()
+            self._listeners.clear()
         for sub in subs:
             sub.stop()
 

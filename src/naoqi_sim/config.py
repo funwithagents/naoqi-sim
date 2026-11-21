@@ -423,6 +423,19 @@ class PerceptionSettings(_Loaders):
 
 
 @dataclass(frozen=True)
+class SpeechRecognitionSettings(_Loaders):
+    """The speech recognition engine (specs/container/asr-engine.md): what ALSpeechRecognition
+    hears (specs/services/speech-recognition.md)."""
+
+    # False starts no `asr` container: ALSpeechRecognition still answers and hears nothing
+    enabled: bool = True
+
+    @classmethod
+    def parse(cls, data: Any, path: str) -> Self:
+        return _parse_block(cls, data, path, {"enabled": _as_bool})
+
+
+@dataclass(frozen=True)
 class NaoqiSimConfig(_Loaders):
     """A simulated NAO: its NAOqi, its engines, its host devices and its viewer."""
 
@@ -433,6 +446,9 @@ class NaoqiSimConfig(_Loaders):
     video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
     viewer: ViewerSettings = field(default_factory=ViewerSettings)
     perception: PerceptionSettings = field(default_factory=PerceptionSettings)
+    speech_recognition: SpeechRecognitionSettings = field(
+        default_factory=SpeechRecognitionSettings
+    )
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
@@ -448,6 +464,9 @@ class NaoqiSimConfig(_Loaders):
                 "video_input": lambda d: VideoInputSettings.parse(d, "video_input"),
                 "viewer": lambda d: ViewerSettings.parse(d, "viewer"),
                 "perception": lambda d: PerceptionSettings.parse(d, "perception"),
+                "speech_recognition": lambda d: SpeechRecognitionSettings.parse(
+                    d, "speech_recognition"
+                ),
             },
         )
 

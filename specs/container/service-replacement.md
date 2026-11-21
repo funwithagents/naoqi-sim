@@ -47,6 +47,7 @@ naoqi-sim makes the container look like a real NAO by replacing or adding NAOqi 
 `ALModule` rules (2.1):
 
 - It auto-binds every method that has a docstring, with the arity from `inspect.getargspec`; defaults count toward that arity. An overload with fewer arguments needs an explicit `self.BIND_PYTHON(name, "<method>", <arity>)`, for example `say(text)` next to `say(text, language)`.
+- It binds no method whose name starts with `_`, whatever its docstring: a hidden method a caller needs (the dialog calls several on `ALSpeechRecognition`) is bound by hand with `functionName`, `addParam` and `_bindWithParam` in the constructor (measured Nov 21, 2026: unbound, the dialog's call failed without a word).
 - Method names that collide with the `ALModule` generics (`ping`, `version`, `exit`, `stop`, `wait`, ...) must be avoided. A Python `stop` is never called, even bound explicitly with `BIND_PYTHON`: the generic wins (measured Oct 12, 2026).
 - The generics `pCall` (what `ALProxy.post` calls), `isRunning(id)` and `wait(id, timeout)` work on a Python `ALModule`, on 2.1 and in 2.8's `naoqi-service`; the generic `stop(id)` does nothing to it ("Task ids, `wait` and `stop(id)`").
 

@@ -28,7 +28,8 @@ def _parser() -> argparse.ArgumentParser:
         help="fetch the image data, build the images and verify they boot",
         description="Fetch the pinned Choregraphe suite and the robot's animations package "
         "(Aldebaran's software, from Aldebaran's GitHub repositories, hash-checked), build "
-        "the NAOqi and tts images, and verify they boot. Run once before starting naoqi-sim, "
+        "the NAOqi image and the engines' images (speech, perception, speech recognition), "
+        "and verify they boot. Run once before starting naoqi-sim, "
         "and again after changing docker/.",
     )
     build.add_argument(

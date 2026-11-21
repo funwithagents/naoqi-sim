@@ -402,3 +402,46 @@ def test_the_need_is_sent_again_after_the_host_comes_back(monkeypatch):
             second.close()
     finally:
         dev.close()
+
+
+def test_an_in_process_listener_gets_its_formats_buffers_without_the_relay(device):
+    """Another module of ours (the speech recognition) takes the front microphone at 16 kHz in
+    the same process: the host is asked for that format while it listens, and only then."""
+    dev, host, relay = device
+    got: list[tuple] = []
+    arrived = threading.Event()
+
+    def deliver(channels, samples, stamp, buffer):
+        got.append((channels, samples, buffer))
+        arrived.set()
+
+    dev.listen("_speech", 16000, 3, deliver)
+    host.wait_need(lambda n: n["formats"] == [core.format_header(FRONT)])
+    host.pcm(ALL, 4, 1, b"\x00\x01" * 4)  # not its format
+    host.pcm(FRONT, 1, 2, b"\x01\x00\x02\x00")
+    assert arrived.wait(2)
+    time.sleep(0.1)
+    assert got == [(1, 2, b"\x01\x00\x02\x00")]
+    assert relay.got == {} and dev.subscribers() == {}  # not a qi subscriber
+
+    dev.unlisten("_speech")
+    host.wait_need(lambda n: n["formats"] == [])
+
+
+def test_a_listener_that_raises_keeps_receiving(device):
+    dev, host, _ = device
+    calls: list[bytes] = []
+
+    def deliver(channels, samples, stamp, buffer):
+        calls.append(buffer)
+        raise RuntimeError("the listener failed")
+
+    dev.listen("_speech", 16000, 3, deliver)
+    host.wait_need(lambda n: len(n["formats"]) == 1)
+    # one at a time: the queue drops when it falls behind
+    for i in range(core.FAILURES + 2):
+        host.pcm(FRONT, 1, 1, bytes([i, 0]))
+        deadline = time.monotonic() + 2
+        while len(calls) <= i and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert len(calls) == core.FAILURES + 2

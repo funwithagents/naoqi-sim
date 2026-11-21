@@ -102,6 +102,7 @@ extraPaths = [
     "docker/naoqi/services/face-detection",
     "docker/naoqi/services/people-perception",
     "docker/naoqi/services/perception-stubs",
+    "docker/naoqi/services/speech-recognition",
     "docker/tts-engine",
 ]
 typeCheckingMode = "standard"

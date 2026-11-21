@@ -42,6 +42,21 @@ services:
       timeout: 6s
       retries: 3
       start_period: 30s
+  asr:
+    build:
+      context: ./asr-engine
+      labels:
+        io.naoqi-sim.version: ${NAOQI_SIM_VERSION:-dev}
+        io.naoqi-sim.recipes: ${NAOQI_SIM_RECIPES:-}
+    image: naoqi-sim/asr:dev
+    container_name: naoqi-sim-asr
+    healthcheck:
+      # 200 once the English and French models are loaded (about a second), 503 meanwhile.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"]
+      interval: 2s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
   naoqi21:
     profiles: ["2.1"]
     build:
@@ -64,6 +79,9 @@ services:
       # The perception engine ALFaceDetection posts its frames to; the host sets it empty to run
       # without one (perception.enabled = false), hence `-` and not `:-`.
       NAOQI_SIM_PERCEPTION_URL: ${NAOQI_SIM_PERCEPTION_URL-http://perception:8080}
+      # The speech recognition engine ALSpeechRecognition posts the microphones' audio to; the host
+      # sets it empty to run without one (speech_recognition.enabled = false).
+      NAOQI_SIM_ASR_URL: ${NAOQI_SIM_ASR_URL-http://asr:8080}
       # The installed languages, what ALTextToSpeech.getAvailableLanguages answers (specs/services/speech.md).
       NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
@@ -101,6 +119,9 @@ services:
       # The perception engine ALFaceDetection posts its frames to; the host sets it empty to run
       # without one (perception.enabled = false), hence `-` and not `:-`.
       NAOQI_SIM_PERCEPTION_URL: ${NAOQI_SIM_PERCEPTION_URL-http://perception:8080}
+      # The speech recognition engine ALSpeechRecognition posts the microphones' audio to; the host
+      # sets it empty to run without one (speech_recognition.enabled = false).
+      NAOQI_SIM_ASR_URL: ${NAOQI_SIM_ASR_URL-http://asr:8080}
       # The installed languages, what ALTextToSpeech.getAvailableLanguages answers (specs/services/speech.md).
       NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
