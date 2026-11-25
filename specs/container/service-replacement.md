@@ -14,6 +14,7 @@ code:
   - docker/naoqi/services/service-replacement/naoqi_sim_loader.cpp
 tests:
   - tests-e2e/test_speech_live.py
+  - tests-e2e/test_modules_live.py
   - tests/test_entrypoint.py
 ---
 
@@ -42,14 +43,17 @@ naoqi-sim makes the container look like a real NAO by replacing or adding NAOqi 
 | Registration | `naoqi.ALModule(name)` subclass, instantiated at module level | `qi.Session` connected to `tcp://127.0.0.1:$NAOQI_SIM_INTERNAL_PORT`, `registerService(name, obj)` |
 | Why | Registers to the main broker: served on 9559 with the built-ins' endpoints and listed in the broker's local module table, which in-process callers use. A module's own `qi.Session` would serve on a separate port advertised with the container IP, unreachable from the host on Docker Desktop | The gateway relays every service, so a plain qi service is reachable. Required when callers need signals: a legacy `ALModule` cannot declare `qi.Signal`s |
 | Concurrency | Measured OK: `stopAll` gets through while `say` blocks | Decorate the class with `@qi.multiThreaded()`; qi objects are single-threaded by default, so a blocking method would queue every other call |
+| `version()` | A Python `ALModule`'s generic answers `'PythonModule'`: the class defines `version` | A qi service has none: the class defines `version` |
 | `ALProxy.post` | A task id; `wait`/`isRunning` served by the generics | Runs the call synchronously and returns `-1`; `wait`, `stop`, `isRunning` are "Can't find method" (measured on both versions for a qi service) |
 
 `ALModule` rules (2.1):
 
 - It auto-binds every method that has a docstring, with the arity from `inspect.getargspec`; defaults count toward that arity. An overload with fewer arguments needs an explicit `self.BIND_PYTHON(name, "<method>", <arity>)`, for example `say(text)` next to `say(text, language)`.
 - It binds no method whose name starts with `_`, whatever its docstring: a hidden method a caller needs (the dialog calls several on `ALSpeechRecognition`) is bound by hand with `functionName`, `addParam` and `_bindWithParam` in the constructor (measured Nov 21, 2026: unbound, the dialog's call failed without a word).
-- Method names that collide with the `ALModule` generics (`ping`, `version`, `exit`, `stop`, `wait`, ...) must be avoided. A Python `stop` is never called, even bound explicitly with `BIND_PYTHON`: the generic wins (measured Oct 12, 2026).
+- Method names that collide with the `ALModule` generics (`ping`, `exit`, `stop`, `wait`, ...) must be avoided. A Python `stop` is never called, even bound explicitly with `BIND_PYTHON`: the generic wins (measured Oct 12, 2026). `version` is the exception: a Python `version` method replaces the generic's answer, with no binding by hand (measured Nov 25, 2026).
 - The generics `pCall` (what `ALProxy.post` calls), `isRunning(id)` and `wait(id, timeout)` work on a Python `ALModule`, on 2.1 and in 2.8's `naoqi-service`; the generic `stop(id)` does nothing to it ("Task ids, `wait` and `stop(id)`").
+
+**`version()`.** On a NAO every module answers `version()` with NAOqi's version, shortened: `'2.1.4'` on 2.1 (measured on a robot), and the desktop suites' built-ins answer `'2.1.4'` and `'2.8'`. Our C++ modules (the fronts, the relay, the loader) answer the same, being `ALModule`s built against each suite's SDK. Each Python module of ours, on both versions, defines `version` as a call to `ALMemory.version()`, a built-in we do not replace, so every name we register answers what the built-ins around it answer, with no constant to keep. That covers the replaced names, the added ones (the hidden ones and the stubs included) and the status service.
 
 ### Replacing a built-in
 

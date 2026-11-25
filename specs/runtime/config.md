@@ -52,7 +52,9 @@ class NaoqiSimConfig:
     video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
     viewer: ViewerSettings = field(default_factory=ViewerSettings)
     perception: PerceptionSettings = field(default_factory=PerceptionSettings)
-    speech_recognition: SpeechRecognitionSettings = field(default_factory=SpeechRecognitionSettings)
+    speech_recognition: SpeechRecognitionSettings = field(
+        default_factory=SpeechRecognitionSettings
+    )
 
 
 @dataclass

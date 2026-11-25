@@ -27,6 +27,10 @@ def _log(**f):
 class NaoqiSimAudioPlayer(object):
     """multiThreaded: the front's waitDone blocks while stopCall and stopAll must get through."""
 
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self):
         self.player = core.Player(log=_log)
 

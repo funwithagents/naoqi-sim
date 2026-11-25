@@ -15,6 +15,10 @@ LOG = ext.JsonLog("/home/nao/face_detection.jsonl", "naoqi_sim_face_detection_qi
 
 @qi.multiThreaded()
 class ALFaceDetectionService(object):
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self, session):
         memory = session.service("ALMemory")
         self.detector = core.Detector(lambda: session.service("ALVideoDevice"), lambda: session.service("ALMotion"), core.Engine(), log=LOG)

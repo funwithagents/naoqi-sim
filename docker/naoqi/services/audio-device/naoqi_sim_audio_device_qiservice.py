@@ -41,6 +41,10 @@ def _exists(name, wait_s=10.0):
 
 @qi.multiThreaded()
 class ALAudioDevice(object):
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self):
         self.device = core.AudioDevice(_deliver, _exists, _forget)
 

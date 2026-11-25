@@ -17,6 +17,10 @@ LOG = ext.JsonLog("/home/nao/people_perception.jsonl", "naoqi_sim_people_percept
 
 @qi.multiThreaded()
 class ALPeoplePerceptionService(object):
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self, session):
         memory = session.service("ALMemory")
         self.justArrived = qi.Signal("(i)")
