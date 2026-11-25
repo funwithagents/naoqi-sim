@@ -139,6 +139,7 @@ ADDED = {
         "ALFaceDetection",
         *STUBS[v],
         *(["_NaoqiSimPerceptionSources"] if v == "2.8" else []),
+        "_NaoqiSimLaunchpadPeople",
     ]
     for v in ("2.1", "2.8")
 }
@@ -164,13 +165,13 @@ MODULES = {
     "naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule "
     "naoqi_sim_speech_recognition_almodule "
     "naoqi_sim_face_detection_almodule naoqi_sim_people_perception_almodule "
-    "naoqi_sim_engagement_zones_almodule "
+    "naoqi_sim_engagement_zones_almodule naoqi_sim_launchpad_people_almodule "
     "naoqi_sim_perception_stubs_almodule",
     "2.8": "naoqi_sim_status_qiservice naoqi_sim_life_qiservice naoqi_sim_speech_qiservice "
     "naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice "
     "naoqi_sim_speech_recognition_qiservice "
     "naoqi_sim_face_detection_qiservice naoqi_sim_people_perception_qiservice "
-    "naoqi_sim_engagement_zones_qiservice "
+    "naoqi_sim_engagement_zones_qiservice naoqi_sim_launchpad_people_qiservice "
     "naoqi_sim_perception_stubs_qiservice",
 }
 URLS = {"2.1": "--qi-url tcp://127.0.0.1:9559", "2.8": "--qi-url tcp://127.0.0.1:9558"}
