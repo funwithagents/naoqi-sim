@@ -58,6 +58,9 @@ FAKE_QICLI = textwrap.dedent(
     target = args[1]
     if target.split(".")[0] in down:  # a call on a service that did not load
         sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
+    if target == "ALMotion.rest":  # a move, slower than an answer
+        import time
+        time.sleep(float(os.environ.get("FAKE_QICLI_REST_SECONDS", "0")))
     if target == "ALSpeechRecognition.getAvailableLanguages":
         print(os.environ.get("FAKE_QICLI_RECOGNISED", '["English", "French"]'))
     if target.startswith("NaoqiSim."):
@@ -194,10 +197,17 @@ def expected_calls(
         if version == "2.8"
         else []
     )
+    # 2.1's desktop life accepts setState only once allowed; both rest, crouched with motors off.
+    life = (
+        [f"call ALAutonomousLife._setStateChangeEnabled true --hidden --json {url}"]
+        if version == "2.1"
+        else []
+    )
     return (
         [f"call {m}._setDetectionMode 2D {url}" for m in VISION_2D[version]]
         + chosen
-        + [f"call NaoqiSim.setReady {url}"]
+        + life
+        + [f"call ALMotion.rest {url}", f"call NaoqiSim.setReady {url}"]
     )
 
 
@@ -314,8 +324,9 @@ def test_sequence_on_2_1(fakes):
     # added built-in name is checked, right before setReady.
     checked = REPLACED + ADDED["2.1"] + BUILTINS_21
     assert f"NAOqi ready after 4 polls, {len(SERVICES.split())} services" in ep.output()
-    # the names checked, then the 2D calls and setReady
-    assert fakes.calls()[-len(checked) - 4 : -4] == [
+    # the names checked, then the 2D calls, life allowed, the rest and setReady
+    last = len(expected_calls("2.1"))
+    assert fakes.calls()[-len(checked) - last : -last] == [
         f"info {name} {url}" for name in checked
     ]
     assert fakes.naoqi_bin("args").startswith("-b 0.0.0.0 -p 9559 --autoload-file ")
@@ -339,7 +350,7 @@ def test_2_8_chooses_every_installed_language_the_robots_own_last(fakes):
     assert calls_only(fakes) == expected_calls("2.8", ("French", "English"))
     url = URLS["2.8"]
     # the dialog's language ends on French, the first of the list
-    assert calls_only(fakes)[-2] == f"call ALDialog.setLanguage French {url}"
+    assert calls_only(fakes)[-3] == f"call ALDialog.setLanguage French {url}"
 
 
 def test_2_8_leaves_out_a_language_the_recognition_does_not_have(fakes):
@@ -352,6 +363,19 @@ def test_2_8_leaves_out_a_language_the_recognition_does_not_have(fakes):
     assert "German is not chosen" in ep.output()
 
 
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+def test_the_rest_may_take_longer_than_an_answer(fakes, version):
+    """rest() moves the robot for about 5 s: the limit on qicli's answers does not apply to it."""
+    ep = Entrypoint(
+        fakes,
+        version,
+        {"FAKE_QICLI_REST_SECONDS": "1", "NAOQI_SIM_QICLI_TIMEOUT": "0.5"},
+    )
+    ep.wait_for_ready()
+    ep.stop()
+    assert calls_only(fakes) == expected_calls(version)
+
+
 def test_sequence_on_2_8(fakes):
     ep = Entrypoint(fakes, "2.8")
     ep.wait_for_ready()
@@ -360,7 +384,7 @@ def test_sequence_on_2_8(fakes):
     url = URLS["2.8"]
     assert calls_only(fakes) == expected_calls("2.8")
     checked = REPLACED + ADDED["2.8"] + KEPT_28
-    # the names checked, then the 2D calls, the language and setReady
+    # the names checked, then the 2D calls, the languages, the rest and setReady
     last = len(expected_calls("2.8"))
     assert fakes.calls()[-len(checked) - last : -last] == [
         f"info {name} {url}" for name in checked

@@ -80,7 +80,11 @@ RUN sed -i 's/JULIETTEY20B2C.xml/NAOH25V60.xml/' /opt/naoqi/etc/naoqi/ALRobotMod
 # naoqi-bin refuses to run as root. The package store is created here so that the compose volume
 # mounted on it starts owned by nao.
 RUN useradd -m -u 1000 -s /bin/bash nao && chown -R nao:nao /opt/naoqi \
- && mkdir -p /home/nao/.local/share/PackageManager && chown -R nao:nao /home/nao/.local
+ && mkdir -p /home/nao/.local/share/PackageManager /home/nao/.config/naoqi \
+ && chown -R nao:nao /home/nao/.local /home/nao/.config
+# A NAO's Life configuration (extracted from the robot image's life package), where Life looks
+# first: the desktop suite's own has no rule taking Life to a person (autonomous-life.md).
+COPY --from=image-data --chown=1000:1000 autonomy.cfg /home/nao/.config/naoqi/autonomy.cfg
 
 ENV NAOQI_HOME=/opt/naoqi \
     PATH=/opt/naoqi/bin:$PATH \

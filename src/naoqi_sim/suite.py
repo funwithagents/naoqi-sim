@@ -1,6 +1,7 @@
 """Fetch what the NAOqi images are built from into the image data folder's <version>/ (`files.IMAGE_DATA`:
 docker/image-data/ in a checkout, the user data directory when installed): the pinned Choregraphe
-suite, the robot's `animations` package extracted from the public robot image, and the build files
+suite, the robot's `animations` package extracted from the public robot image (on 2.8 also a NAO's
+Autonomous Life configuration, from the image's `life` package), and the build files
 whose headers our C++ NAOqi modules are compiled against (the version's own C++ SDK:
 specs/container/container.md, "Build files").
 
@@ -19,11 +20,13 @@ recorded in `<image-data>/hashes.json`, so a file that has not changed since is 
 The robot image (`.opn`) is a 4096-byte `ALDIMAGE` header, an installer shell script whose
 variables locate the payload, then the compressed ext3 root filesystem (bzip2 on 2.1, gzip on
 2.8). It is decompressed here and streamed into a throwaway Alpine container, whose `debugfs`
-writes the package to stdout: no ext3 tooling or mount is needed on the host.
+writes the package to stdout: no ext3 tooling or mount is needed on the host. A robot package is a
+zip archive, from which a single file is read in memory.
 """
 
 import bz2
 import hashlib
+import io
 import json
 import re
 import shutil
@@ -32,6 +35,7 @@ import sys
 import threading
 import urllib.parse
 import urllib.request
+import zipfile
 import zlib
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -43,6 +47,7 @@ from naoqi_sim.errors import FetchError
 IMAGE_DATA = files.IMAGE_DATA
 CHUNK = 1 << 20
 PACKAGE = "animations.pkg"
+LIFE_CONFIG = "autonomy.cfg"  # the robot's Life configuration, as Life reads it from ~/.config/naoqi/
 
 # Git LFS files are served from media.githubusercontent.com; the raw URL returns the pointer.
 _V5 = "https://media.githubusercontent.com/media/aldebaran/NAO-V5-ressources/main/"
@@ -63,6 +68,17 @@ class PinnedFile:
 
 
 @dataclass(frozen=True)
+class PackagedFile:
+    """A file inside a package of the robot image: the package's path in the root filesystem and
+    its hash, the file's path in the package and its hash."""
+
+    package_path: str
+    package_sha256: str
+    member: str
+    sha256: str
+
+
+@dataclass(frozen=True)
 class Version:
     name: str
     suite: PinnedFile
@@ -71,6 +87,9 @@ class Version:
     package_sha256: str
     # Headers the native relay is compiled against in the image build (Dockerfile stage `relay`)
     build_files: tuple[PinnedFile, ...] = ()
+    # A NAO's Life configuration, from the robot's `life` package (2.8: the desktop suite's has no
+    # rule taking Life to a person; specs/container/autonomous-life.md)
+    life_config: PackagedFile | None = None
 
 
 VERSIONS = {
@@ -113,6 +132,12 @@ VERSIONS = {
                 _V6_SDK + "naoqi-sdk-2.8.7.4-linux64.tar.gz",
                 "e42c8b95e6e3de349cf76100d006a9f5b48bd625f0236b0a0fe094fc29970967",
             ),
+        ),
+        PackagedFile(
+            "/opt/aldebaran/share/naoqi/apps/life-0.0.13-agility-274-atom.pkg",
+            "5502364f8787498c9084205be6141f69c394dd58af7e89f4bbfe7b4b98977859",
+            "etc/naoqi/autonomy-nao-romeo.cfg",
+            "587dfce272003c01e21c045f6c143b52dcd9e5f56e0df32ed2c171fa2c9a5917",
         ),
     ),
 }
@@ -358,29 +383,59 @@ def docker_cat(rootfs: Iterable[bytes], path: str) -> Iterator[bytes]:
 Cat = Callable[[Iterable[bytes], str], Iterable[bytes]]
 
 
+def _packaged(chunks: Iterable[bytes], f: PackagedFile, source: str) -> bytes:
+    """The file `f` names, out of its package's bytes `chunks`, both hashes checked."""
+    package = b"".join(chunks)
+    got = hashlib.sha256(package).hexdigest()
+    if got != f.package_sha256:
+        raise FetchError(f"{source}: got SHA-256 {got}, expected {f.package_sha256}")
+    try:
+        return zipfile.ZipFile(io.BytesIO(package)).read(f.member)
+    except (zipfile.BadZipFile, KeyError) as e:
+        raise FetchError(f"{source}: no {f.member} in the package ({e})") from e
+
+
 def fetch(
     version: Version, image_data: Path = IMAGE_DATA, cat: Cat = docker_cat
 ) -> Path:
-    """Make sure `<image-data>/<version>/` holds the suite, `animations.pkg` and the build files.
-    Returns the folder."""
+    """Make sure `<image-data>/<version>/` holds the suite, `animations.pkg`, the Life
+    configuration (2.8) and the build files. Returns the folder."""
     folder = image_data / version.name
     _log(f"NAOqi {version.name}")
     fetch_file(version.suite, folder)
     for f in version.build_files:
         fetch_file(f, folder)
     package = folder / PACKAGE
-    if not _present(package, version.package_sha256):
+    life = version.life_config
+    need_package = not _present(package, version.package_sha256)
+    need_life = life is not None and not _present(folder / LIFE_CONFIG, life.sha256)
+    if need_package or need_life:
         opn = folder / version.image.filename
         users = opn.exists()  # a robot image the user put there is kept
         try:
             fetch_file(version.image, folder)
-            _log(f"extracting {version.package_path} from {opn.name} (needs Docker)")
-            _write(
-                cat(rootfs_chunks(opn), version.package_path),
-                package,
-                version.package_sha256,
-                f"{opn.name}:{version.package_path}",
-            )
+            if need_package:
+                _log(
+                    f"extracting {version.package_path} from {opn.name} (needs Docker)"
+                )
+                _write(
+                    cat(rootfs_chunks(opn), version.package_path),
+                    package,
+                    version.package_sha256,
+                    f"{opn.name}:{version.package_path}",
+                )
+            if life is not None and need_life:
+                source = f"{opn.name}:{life.package_path}"
+                _log(f"extracting {life.member} from {source} (needs Docker)")
+                config = _packaged(
+                    cat(rootfs_chunks(opn), life.package_path), life, source
+                )
+                _write(
+                    [config],
+                    folder / LIFE_CONFIG,
+                    life.sha256,
+                    f"{source}:{life.member}",
+                )
         finally:
             if not users:
                 opn.unlink(missing_ok=True)

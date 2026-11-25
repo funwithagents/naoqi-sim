@@ -167,6 +167,23 @@ choose_languages() {
   done
 }
 
+# allow_life_state_changes: the 2.1 desktop suite's ALAutonomousLife refuses every setState ("Calls to
+# the setState method are not currently allowed") until this call; a real NAO 2.1 accepts them
+# (specs/container/autonomous-life.md, "Switching Life on").
+allow_life_state_changes() {
+  # A hidden method (--hidden), and a bool, not the string "true" (--json).
+  local out
+  out=$(call ALAutonomousLife._setStateChangeEnabled true --hidden --json 2>&1) || fail "ALAutonomousLife._setStateChangeEnabled failed: $out"
+}
+
+# rest: the robot crouched, its motors off, as a NAO whose Life does not start at boot
+# (specs/container/autonomous-life.md, "The sim boots with Life off, at rest").
+rest() {
+  local out
+  # A move: about 5 s, longer than the answers QICLI_TIMEOUT bounds.
+  out=$(QICLI_TIMEOUT=30 call ALMotion.rest 2>&1) || fail "ALMotion.rest failed: $out"
+}
+
 # mark_ready: the whole sequence succeeded. Then wait on naoqi-bin (signals are forwarded to it).
 mark_ready() {
   call NaoqiSim.setReady >/dev/null 2>&1 || fail "NaoqiSim.setReady failed: the status module is not loaded"
