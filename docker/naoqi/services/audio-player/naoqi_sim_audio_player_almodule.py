@@ -6,7 +6,7 @@ import json
 import sys
 import time
 
-from naoqi import ALModule
+from naoqi import ALModule, ALProxy
 
 import naoqi_sim_audio_player_core as core
 
@@ -23,6 +23,11 @@ def _log(**f):
 
 
 class NaoqiSimAudioPlayer(ALModule):
+    def version(self):
+        """Returns the version of the module."""
+        # NAOqi's own answer (a Python ALModule's is 'PythonModule'), asked of a built-in
+        return ALProxy("ALMemory").version()
+
     def __init__(self, name):
         ALModule.__init__(self, name)
         self.player = core.Player(log=_log)

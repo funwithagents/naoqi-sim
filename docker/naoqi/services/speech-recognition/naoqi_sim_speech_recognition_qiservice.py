@@ -97,6 +97,10 @@ def _method(name, arity, defaults):
 
 @qi.multiThreaded()
 class ALSpeechRecognitionService(object):
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self):
         memory = _session.service("ALMemory")
         # Declared with this module as their extractor, as on 2.1: ALMemory then calls
@@ -134,6 +138,10 @@ for _name, _arity, _defaults, _handler in METHODS:
 
 @qi.multiThreaded()
 class AsrCompilerService(object):
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self):
         self.service = core.COMPILER
 

@@ -22,6 +22,11 @@ def _log(**f):
 
 
 class NaoqiSimTextToSpeech(ALModule):
+    def version(self):
+        """Returns the version of the module."""
+        # NAOqi's own answer (a Python ALModule's is 'PythonModule'), asked of a built-in
+        return ALProxy("ALMemory").version()
+
     def __init__(self, name):
         ALModule.__init__(self, name)
         self.memory = ALProxy("ALMemory")

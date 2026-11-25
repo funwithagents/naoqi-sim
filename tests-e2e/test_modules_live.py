@@ -4,7 +4,10 @@ entrypoint's autoload copy adds the autonomous abilities the desktop suite ships
 with Autonomous Life after them, as the robot's autoload does; 2.8 has them as the expressivity
 package's services. Every module in the image is also checked as Python 2.7."""
 
+import re
 import subprocess
+
+from support import REPO
 
 
 def services(nao) -> set[str]:
@@ -41,6 +44,30 @@ def test_the_autonomous_abilities_of_2_1_are_there(nao):
         "_ALAutonomousBlinking",
         "_ALExpressiveness",
     } <= services(nao)
+
+
+def our_names(version: str) -> list[str]:
+    """The names our modules register: the entrypoint's REPLACED and ADDED lists, and the status
+    service."""
+    script = (REPO / "docker" / "naoqi" / f"entrypoint-{version}.sh").read_text()
+    names = ["NaoqiSim"]
+    for variable in ("REPLACED", "ADDED"):
+        found = re.search(rf'^{variable}="([^"]+)"', script, re.MULTILINE)
+        assert found, f"no {variable} in the {version} entrypoint"
+        names += found.group(1).split()
+    return names
+
+
+def test_our_modules_answer_naoqis_version(nao):
+    # A client asking a module its version gets NAOqi's, whether the module is a built-in or
+    # ours: not 'PythonModule' (a Python ALModule's own answer on 2.1), not a missing method
+    # (a qi service on 2.8).
+    expected = {"2.1": "2.1.4", "2.8": "2.8"}[nao.version.name]
+    assert nao.service("ALMemory").version() == expected
+    answers = {
+        name: nao.service(name).version() for name in our_names(nao.version.name)
+    }
+    assert answers == dict.fromkeys(answers, expected)
 
 
 def test_the_modules_are_python_2_7(nao):

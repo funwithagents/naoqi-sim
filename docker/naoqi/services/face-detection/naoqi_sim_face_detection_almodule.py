@@ -12,6 +12,11 @@ LOG = ext.JsonLog("/home/nao/face_detection.jsonl", "naoqi_sim_face_detection_al
 
 
 class ALFaceDetectionModule(ALModule):
+    def version(self):
+        """Returns the version of the module."""
+        # NAOqi's own answer (a Python ALModule's is 'PythonModule'), asked of a built-in
+        return ALProxy("ALMemory").version()
+
     def __init__(self, name):
         ALModule.__init__(self, name)
         memory = ALProxy("ALMemory")

@@ -9,6 +9,11 @@ import naoqi_sim_status_core as core
 
 
 class NaoqiSim(ALModule):
+    def version(self):
+        """Returns the version of the module."""
+        # NAOqi's own answer (a Python ALModule's is 'PythonModule'), asked of a built-in
+        return ALProxy("ALMemory").version()
+
     def __init__(self, name):
         ALModule.__init__(self, name)
         memory = ALProxy("ALMemory")

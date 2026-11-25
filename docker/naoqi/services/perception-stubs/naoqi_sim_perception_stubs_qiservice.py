@@ -16,6 +16,10 @@ LOG = core.JsonLog("/home/nao/perception_stubs.jsonl", "naoqi_sim_perception_stu
 class StubService(object):
     STUB = None
 
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self, name):
         stub = self.STUB
         self.state = core.Extractor(name, stub.events, stub.keys, stub.settings, processes=False)
@@ -28,6 +32,10 @@ class StubService(object):
 
 @qi.multiThreaded()
 class UserIdentification(core.UserStore):
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self):
         core.UserStore.__init__(self)
         for prop, (signature, value) in core.IDENT_PROPERTIES.items():

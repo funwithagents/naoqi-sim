@@ -10,6 +10,10 @@ import naoqi_sim_status_core as core
 
 
 class NaoqiSim(object):
+    def version(self):
+        # NAOqi's own answer, asked of a built-in: a qi service has no version() of its own
+        return _session.service("ALMemory").version()
+
     def __init__(self, session):
         memory = session.service("ALMemory")
         self.status = core.Status(memory.insertData, memory.raiseEvent)

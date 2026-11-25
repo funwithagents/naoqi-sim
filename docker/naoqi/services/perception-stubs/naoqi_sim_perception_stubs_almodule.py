@@ -14,6 +14,11 @@ LOG = core.JsonLog("/home/nao/perception_stubs.jsonl", "naoqi_sim_perception_stu
 class StubModule(ALModule):
     STUB = None
 
+    def version(self):
+        """Returns the version of the module."""
+        # NAOqi's own answer (a Python ALModule's is 'PythonModule'), asked of a built-in
+        return ALProxy("ALMemory").version()
+
     def __init__(self, name):
         ALModule.__init__(self, name)
         stub = self.STUB

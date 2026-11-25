@@ -37,6 +37,11 @@ def _exists(name):
 
 
 class ALAudioDevice(ALModule):
+    def version(self):
+        """Returns the version of the module."""
+        # NAOqi's own answer (a Python ALModule's is 'PythonModule'), asked of a built-in
+        return ALProxy("ALMemory").version()
+
     def __init__(self, name):
         ALModule.__init__(self, name)
         self.device = core.AudioDevice(_deliver, _exists, _forget)
