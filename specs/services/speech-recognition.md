@@ -37,7 +37,7 @@ The module replaces nothing: no built-in holds the name. The engine does the aco
 
 ### Languages
 
-- **English and French**, the two models the engine has ([asr-engine.md](../container/asr-engine.md)). `getAvailableLanguages()` answers those of the two that are among the installed speech languages ([config.md](../runtime/config.md), `speech.languages`), in NAOqi's names; `getLanguage()` starts as the first of them (the robot's language when it is one of the two). `setLanguage` to any other raises "This engine does not support the following language: <name>" and keeps the language, as measured on the robot. With neither installed the module answers its API and recognises nothing.
+- **English and French**, the two models the engine has ([asr-engine.md](../container/asr-engine.md)). `getAvailableLanguages()` answers those of the two that are among the installed languages ([config.md](../runtime/config.md), `robot.available_languages`), in NAOqi's names; `getLanguage()` starts as the robot's language (`robot.language`). `setLanguage` to any other raises "This engine does not support the following language: <name>" and keeps the language, as measured on the robot. With neither installed the module answers its API and recognises nothing.
 
 ### What it listens for
 

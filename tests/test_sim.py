@@ -24,8 +24,8 @@ from naoqi_sim.config import (
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
+    RobotSettings,
     SpeechRecognitionSettings,
-    SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
 )
@@ -145,7 +145,10 @@ def play(port: int, seconds: float = 0.2, rate: int = 8000) -> None:
 def test_start_runs_the_robot_and_stop_takes_it_down(env):
     sink = MemorySink()
     config = NaoqiSimConfig(
-        speech=SpeechSettings(languages=("German", "English")), viewer=HEADLESS
+        robot=RobotSettings(
+            available_languages=("English", "French"), language="French"
+        ),
+        viewer=HEADLESS,
     )
     naoqisim = sim.NaoqiSim(config, sink=sink)
     assert not naoqisim.running
@@ -157,7 +160,8 @@ def test_start_runs_the_robot_and_stop_takes_it_down(env):
         [up] = [c for c in compose_calls(env) if " up " in c]
         assert "--profile 2.1" in up
         assert up.endswith("up -d --no-build tts perception asr naoqi21")
-        assert env.read()["up_languages"] == "German,English"
+        # the language at boot first: the containers read it there
+        assert env.read()["up_languages"] == "French,English"
         assert env.read()["up_perception_url"] == "http://perception:8080"
         assert env.read()["up_asr_url"] == "http://asr:8080"
         assert env.read()["containers"] == {

@@ -24,9 +24,14 @@ RobotPosture = Literal["crouch", "stand", "sit"]
 
 MAX_FPS = 30  # a NAO camera's highest frame rate
 
+# The language packs naoqi-sim has: a language a robot speaks, hears and talks in, with a voice in
+# the speech engine and a model in the speech recognition engine (docker/asr-engine/server.py,
+# `MODELS`; the fast tier checks them). What `robot.available_languages` may install.
+LANGUAGES = ("English", "French")
+
 # NAOqi's language names the speech engine has a voice for, in the engine's table order
-# (docker/tts-engine/server.py, `VOICES`; the fast tier checks the two lists agree). What
-# `speech.languages` may install (specs/container/tts-engine.md, "Languages").
+# (docker/tts-engine/server.py, `VOICES`; the fast tier checks the two lists agree)
+# (specs/container/tts-engine.md, "Languages").
 SPEECH_LANGUAGES = (
     "English",
     "French",
@@ -227,17 +232,44 @@ class NaoqiSettings(_Loaders):
 
 @dataclass(frozen=True)
 class RobotSettings(_Loaders):
-    """The robot's state when the sim is ready (specs/container/autonomous-life.md, "The state at
-    boot"): its posture, whether its stiffness is on (all joints, as after `wakeUp()`) or off (as
-    after `rest()`), whether Autonomous Life runs (`solitary`). The default is a NAO whose Life
-    does not start at boot, at rest."""
+    """The robot: its language packs, and its state when the sim is ready
+    (specs/container/autonomous-life.md, "The state at boot"): its posture, whether its stiffness
+    is on (all joints, as after `wakeUp()`) or off (as after `rest()`), whether Autonomous Life
+    runs (`solitary`), and its language. The default is a NAO in English whose Life does not
+    start at boot, at rest."""
 
     posture: RobotPosture = "crouch"
     stiffness_on: bool = False
     life_on: bool = False
+    # The installed language packs, as a NAO's: what getAvailableLanguages answers and
+    # setLanguage accepts, on the speech, the recognition and the dialog (`LANGUAGES`)
+    available_languages: tuple[str, ...] = ("English", "French")
+    # The language at boot, one of available_languages
+    language: str = "English"
 
     def __post_init__(self) -> None:
         _check_choice(self.posture, RobotPosture, "posture")
+        languages = tuple(self.available_languages)
+        object.__setattr__(self, "available_languages", languages)
+        if not languages:
+            raise ConfigError(
+                "must name at least one language", key="available_languages"
+            )
+        for name in languages:
+            if name not in LANGUAGES:
+                raise ConfigError(
+                    f"{name!r} has no language pack (a voice and a recognition model); "
+                    "the languages with one: " + ", ".join(LANGUAGES),
+                    key="available_languages",
+                )
+        if len(set(languages)) != len(languages):
+            raise ConfigError("names a language twice", key="available_languages")
+        if self.language not in languages:
+            raise ConfigError(
+                f"{self.language!r} is not one of available_languages "
+                f"({', '.join(languages)})",
+                key="language",
+            )
         if self.posture == "stand" and not self.stiffness_on:
             raise ConfigError(
                 "a NAO cannot stand with its stiffness off: 'crouch' is that state",
@@ -258,37 +290,14 @@ class RobotSettings(_Loaders):
             cls,
             data,
             path,
-            {"posture": _as_str, "stiffness_on": _as_bool, "life_on": _as_bool},
+            {
+                "posture": _as_str,
+                "stiffness_on": _as_bool,
+                "life_on": _as_bool,
+                "available_languages": _as_str_tuple,
+                "language": _as_str,
+            },
         )
-
-
-@dataclass(frozen=True)
-class SpeechSettings(_Loaders):
-    """The installed languages, as a NAO's language packs (specs/services/speech.md,
-    "Language"): what `ALTextToSpeech.getAvailableLanguages` answers and `setLanguage` accepts,
-    by NAOqi name; the first is the language at boot. Each needs a voice in the speech engine
-    (`SPEECH_LANGUAGES`); the two default ones are in its image, any other is fetched on first use."""
-
-    languages: tuple[str, ...] = ("English", "French")
-
-    def __post_init__(self) -> None:
-        languages = tuple(self.languages)
-        object.__setattr__(self, "languages", languages)
-        if not languages:
-            raise ConfigError("must name at least one language", key="languages")
-        for name in languages:
-            if name not in SPEECH_LANGUAGES:
-                raise ConfigError(
-                    f"{name!r} has no voice in the speech engine; the languages with one: "
-                    + ", ".join(SPEECH_LANGUAGES),
-                    key="languages",
-                )
-        if len(set(languages)) != len(languages):
-            raise ConfigError("names a language twice", key="languages")
-
-    @classmethod
-    def parse(cls, data: Any, path: str) -> Self:
-        return _parse_block(cls, data, path, {"languages": _as_str_tuple})
 
 
 @dataclass(frozen=True)
@@ -479,7 +488,6 @@ class NaoqiSimConfig(_Loaders):
 
     naoqi: NaoqiSettings = field(default_factory=NaoqiSettings)
     robot: RobotSettings = field(default_factory=RobotSettings)
-    speech: SpeechSettings = field(default_factory=SpeechSettings)
     audio_output: AudioOutputSettings = field(default_factory=AudioOutputSettings)
     audio_input: AudioInputSettings = field(default_factory=AudioInputSettings)
     video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
@@ -506,7 +514,6 @@ class NaoqiSimConfig(_Loaders):
             {
                 "naoqi": lambda d: NaoqiSettings.parse(d, "naoqi"),
                 "robot": lambda d: RobotSettings.parse(d, "robot"),
-                "speech": lambda d: SpeechSettings.parse(d, "speech"),
                 "audio_output": lambda d: AudioOutputSettings.parse(d, "audio_output"),
                 "audio_input": lambda d: AudioInputSettings.parse(d, "audio_input"),
                 "video_input": lambda d: VideoInputSettings.parse(d, "video_input"),

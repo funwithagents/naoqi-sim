@@ -1,21 +1,27 @@
 """The whole of Life and its main dialog on both versions, as on a robot (autonomous-life.md,
 "Tests"): a person walks up to the robot, Life goes to them and starts the main dialog, the person
-speaks and the robot answers, the person leaves and Life goes back to watching.
+speaks and the robot answers, a sentence starts an application, the person leaves and Life goes
+back to watching. In English, and in French on a sim whose first language is French.
 
 With our own packages only (tests-e2e/packages/, written for these tests: no Aldebaran package can
-be committed): a dialog package, and on 2.1 an interactive activity with a NAO launcher's
-condition, which a NAO 2.1 user installs. 2.8 needs none: Life starts the dialog itself."""
+be committed): a dialog package, whose topic starts our test application by voice, the
+application, and on 2.1 an interactive activity with a NAO launcher's condition, which a NAO 2.1
+user installs. 2.8 needs none: Life starts the dialog itself."""
 
 import stat
 import time
 import zipfile
 from pathlib import Path
 
-import pytest
+from conftest import live_config
 from support import recorded_sentences, say_to_the_robot, wait_until
+
+from naoqi_sim import NaoqiSim
+from naoqi_sim.config import RobotSettings
 
 PACKAGES = Path(__file__).parent / "packages"
 DIALOG = "naoqi_sim_test_dialog"
+APP = "naoqi_sim_test_app"
 LAUNCHER = "naoqi_sim_test_launcher"  # 2.1 only
 
 
@@ -35,21 +41,17 @@ def build(name: str, dest: Path) -> Path:
     return pkg
 
 
-@pytest.fixture
-def installed(nao, tmp_path):
-    names = [DIALOG] + ([LAUNCHER] if nao.version.name == "2.1" else [])
+def install(nao, tmp_path: Path) -> list[str]:
+    names = [DIALOG, APP] + ([LAUNCHER] if nao.version.name == "2.1" else [])
     pm = nao.service("PackageManager")
     for name in names:
         nao.container.copy_in(build(name, tmp_path), f"/tmp/{name}.pkg")
         assert pm.install(f"/tmp/{name}.pkg"), name
-    try:
-        yield
-    finally:
-        for name in names:
-            pm.removePkg(name)
+    return names
 
 
-def test_a_person_walks_up_talks_and_leaves(nao, installed):
+def scenario(nao, tmp_path: Path, said: str, answer: str, starts_app: bool) -> None:
+    names = install(nao, tmp_path)
     memory = nao.service("ALMemory")
     life = nao.service("ALAutonomousLife")
     posture = nao.service("ALRobotPosture")
@@ -84,17 +86,67 @@ def test_a_person_walks_up_talks_and_leaves(nao, installed):
             "our topic activated in the main dialog",
         )
         time.sleep(2.0)  # the recognition listening for the dialog's phrases
-        say_to_the_robot(nao, sentences, "hello robot")
+        say_to_the_robot(nao, sentences, said)
         wait_until(
-            lambda: memory.getData("Dialog/Answered") == "hello human",
+            lambda: memory.getData("Dialog/Answered") == answer,
             15.0,
             "the robot's answer",
         )
-        assert memory.getData("Dialog/LastInput") == "hello robot"
+        assert memory.getData("Dialog/LastInput") == said
+        if starts_app:
+            # a sentence of our topic starts our application (^switchFocus)
+            started = memory.subscriber("NaoqiSimTest/AppStarted")
+            seen: list = []
+            started.signal.connect(seen.append)
+            time.sleep(2.0)  # listening again after the answer
+            say_to_the_robot(nao, sentences, "the weather is nice today")
+            deadline = time.monotonic() + 20.0
+            while not seen and time.monotonic() < deadline:
+                time.sleep(0.1)
+            assert seen, (
+                "our application started by voice: heard "
+                f"{memory.getData('Dialog/LastInput')!r}, answered "
+                f"{memory.getData('Dialog/Answered')!r}, focus {life.focusedActivity()!r}, "
+                f"state {life.getState()!r}"
+            )
         # the person leaves: Life goes back to watching
         nao.sim.props.despawn(face.name)
         wait_until(lambda: life.getState() == "solitary", 45.0, "Life solitary again")
     finally:
         nao.sim.props.clear()
         life.setState("disabled")
-    assert posture.getPosture() == "Crouch"
+        pm = nao.service("PackageManager")
+        for name in names:
+            pm.removePkg(name)
+    # at rest again: not awake, the stiffness off. After an application on 2.1 the robot is
+    # sometimes left where it stood rather than crouched (autonomous-life.md, "Tests")
+    motion = nao.service("ALMotion")
+    wait_until(
+        lambda: not motion.robotIsWakeUp() and max(motion.getStiffnesses("Body")) < 0.1,
+        10.0,
+        "the robot at rest",
+    )
+
+
+def test_a_person_walks_up_talks_starts_an_app_and_leaves(nao, tmp_path):
+    scenario(nao, tmp_path, "hello robot", "hello human", starts_app=True)
+
+
+def test_the_same_in_french_on_a_sim_that_boots_in_french(nao, tmp_path):
+    """robot.language is the robot's language at boot: its speech, its recognition and its
+    dialog (config.md, speech-recognition.md)."""
+    default = nao.sim
+    nao.stop()
+    nao.sim = NaoqiSim(
+        live_config(nao.version.name, robot=RobotSettings(language="French")),
+        sink=nao.sink,
+    )
+    try:
+        nao.start()
+        assert nao.service("ALTextToSpeech").getLanguage() == "French"
+        scenario(
+            nao, tmp_path, "je veux une pomme", "tu veux une pomme", starts_app=False
+        )
+    finally:
+        nao.stop()
+        nao.sim = default  # the next test starts the default robot again

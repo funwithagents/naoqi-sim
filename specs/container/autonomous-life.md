@@ -107,9 +107,10 @@ As on a robot out of the box: the dialog content (`dialog_lexicon`, `dialog_appl
 ### Tests
 
 - **Fixtures, written by us and committed** (no Aldebaran package can be: [container.md](container.md), "Image data and licensing"), in `tests-e2e/packages/`, zipped into `.pkg` files and installed by the test only:
-  - `naoqi_sim_test_dialog`: one topic, English and French, a few rules on the recorded test sentences (`hello robot` is answered `hello human`), the same for both versions;
+  - `naoqi_sim_test_dialog`: one topic, English and French, a few rules on the recorded test sentences (`hello robot` is answered `hello human`, `je veux une pomme` `tu veux une pomme`), the same for both versions; one rule, `u:(the weather is nice today) let's go ^switchFocus(naoqi_sim_test_app/.)`, starts our application by voice;
+  - `naoqi_sim_test_app`: an interactive application of one box, which raises `NaoqiSimTest/AppStarted` and ends;
   - `naoqi_sim_test_launcher`, for 2.1: an interactive activity with the robot launcher's condition (`('Launchpad/ZoneOfTrackedHuman' == 1) && ('UserSession/FocusedUser' >= 0)`), one Python box calling `_preloadMain()` and `_runMain()`, which stops the main dialog and ends when `UserSession/ShouldExitInteractiveActivity` is raised or the activity is stopped.
-- **Not built: an application launched by voice.** On a robot the trigger sentences reach the recognition through the dialog's application launcher, a dialog package of the robot's (`dialog_applauncher`). A test of it needs a launcher topic of our own; deferred (open question 8). Measured by hand with a NAO 6's packages, Nov 25, 2026 ("Open questions").
+- **An application launched by voice through its manifest's trigger sentences is not tested.** On a robot those sentences reach the recognition through the dialog's application launcher, a dialog package of the robot's (`dialog_applauncher`); the scenario starts our application from a rule of our own topic instead (open question 8). The robot's way was measured by hand with a NAO 6's packages, Nov 25, 2026 ("Open questions").
 - **Live tier, both versions, one scenario**, the viewer headless, perception and speech recognition on, the sentences played into the fake room:
 
 | Step | Expected |
@@ -119,10 +120,12 @@ As on a robot out of the box: the dialog content (`dialog_lexicon`, `dialog_appl
 | A face prop at 2 m | Tracked, zone 2, Life stays `solitary` |
 | The face moves to 1 m | Zone 1, Life `interactive`, the main dialog started with our topic |
 | A sentence of our topic | Recognised and answered |
+| Another starts our application | Life focuses it, it raises its key |
 | The face is removed | Life back to `solitary`, the dialog stopped |
 | `setState("disabled")` | At rest again |
 
-- **Built** (Nov 25, 2026): `tests-e2e/test_life_scenario_live.py`, on both versions, after `setState("solitary")` (the boot state is checked by `test_boot_live.py`). Measured on its first runs: 2.8 in about 90 s; 2.1 in about 60 s.
+- **Built** (Nov 25, 2026): `tests-e2e/test_life_scenario_live.py`, on both versions, after `setState("solitary")` (the boot state is checked by `test_boot_live.py`); again in French, without the application, on a sim booted with `robot.language` French.
+- **Known issue, 2.1: after an application, `setState("disabled")` sometimes leaves the robot where it stood.** Measured Nov 26, 2026, 3 runs in 6: Life `disabled`, `robotIsWakeUp()` false and the stiffness 0, as always, but the posture still `StandInit` instead of `Crouch` (the simulated joints hold their angles at stiffness 0, so the robot does not sag as a NAO would). Without an application it always ends in `Crouch`. The scenario checks the rest (not awake, stiffness off), not the posture. Not investigated further.
 - The live tests that move joints wake the robot first.
 
 ## Specs this changes when it is built
@@ -148,4 +151,4 @@ Deferred:
 5. The double-tap trigger on 2.8.
 6. A NAO 6's behaviour is judged from its public image: none at hand.
 7. What a NAO does at boot with Life off (posture, stiffness): never watched, it takes a reboot of the real robot.
-8. **An application launched by voice in the live tier**: needs a launcher topic of our own that gives the dialog the installed applications' trigger sentences.
+8. **An application launched by its manifest's trigger sentences in the live tier**: needs a launcher topic of our own that gives the dialog the installed applications' trigger sentences. The scenario starts our application from a rule of its topic.

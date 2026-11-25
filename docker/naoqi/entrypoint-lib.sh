@@ -168,6 +168,20 @@ choose_languages() {
   done
 }
 
+# dialog_language: 2.1's dialog in the robot's language (the first installed), as a NAO's settings page
+# sets it; its speech and recognition start in it by themselves. Left out, logged, when the
+# recognition does not have it (specs/services/speech-recognition.md).
+dialog_language() {
+  local languages=${NAOQI_SIM_LANGUAGES:-English} recognised
+  local language=${languages%%,*}
+  recognised=$(call ALSpeechRecognition.getAvailableLanguages 2>/dev/null) || fail "ALSpeechRecognition.getAvailableLanguages failed"
+  if [[ $recognised != *"\"$language\""* ]]; then
+    log "the dialog stays in its own language: the recognition does not have $language"
+    return
+  fi
+  call ALDialog.setLanguage "$language" >/dev/null 2>&1 || fail "ALDialog.setLanguage $language failed"
+}
+
 # allow_life_state_changes: the 2.1 desktop suite's ALAutonomousLife refuses every setState ("Calls to
 # the setState method are not currently allowed") until this call; a real NAO 2.1 accepts them
 # (specs/container/autonomous-life.md, "Switching Life on").

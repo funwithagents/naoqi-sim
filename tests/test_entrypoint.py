@@ -238,9 +238,13 @@ def expected_calls(
         if version == "2.8"
         else []
     )
-    # 2.1's desktop life accepts setState only once allowed; both rest, crouched with the stiffness off.
+    # 2.1: the dialog in the robot's language; its desktop life accepts setState only once allowed.
     life = (
-        [f"call ALAutonomousLife._setStateChangeEnabled true --hidden --json {url}"]
+        [
+            f"call ALSpeechRecognition.getAvailableLanguages {url}",
+            f"call ALDialog.setLanguage {languages[0]} {url}",
+            f"call ALAutonomousLife._setStateChangeEnabled true --hidden --json {url}",
+        ]
         if version == "2.1"
         else []
     )
@@ -439,6 +443,18 @@ def test_a_robot_that_did_not_sit_fails_the_boot(fakes):
     )
     assert ep.wait_exit() == 1
     assert "the robot did not sit" in ep.output()
+
+
+def test_2_1_sets_the_dialog_to_the_robots_language_when_the_recognition_has_it(fakes):
+    ep = Entrypoint(fakes, "2.1", {"NAOQI_SIM_LANGUAGES": "French,English"})
+    ep.wait_for_ready()
+    ep.stop()
+    assert f"call ALDialog.setLanguage French {URLS['2.1']}" in calls_only(fakes)
+    fakes_german = Entrypoint(fakes, "2.1", {"NAOQI_SIM_LANGUAGES": "German,English"})
+    fakes_german.wait_for_ready()
+    fakes_german.stop()
+    assert not any("ALDialog.setLanguage German" in c for c in calls_only(fakes))
+    assert "the recognition does not have German" in fakes_german.output()
 
 
 def test_sequence_on_2_8(fakes):
