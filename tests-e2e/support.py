@@ -17,6 +17,7 @@ import socket
 import subprocess
 import threading
 import time
+import wave
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -208,6 +209,37 @@ class Listener:
 
 # Where the known issues the live tests mark are documented.
 DESKTOP_FACTS = "specs/container/naoqi-fidelity.md, 'Desktop NAOqi facts'"
+
+
+SPEECH = Path(__file__).parent / "speech"
+
+
+def _read_sentence(path: Path) -> np.ndarray:
+    """A sentence's 16 kHz mono WAV, with 0.3 s of silence on each side."""
+    with wave.open(str(path)) as w:
+        assert (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (
+            16000,
+            1,
+            2,
+        ), path
+        pcm = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
+    silence = np.zeros(4800, np.int16)
+    return np.concatenate([silence, pcm, silence])
+
+
+def recorded_sentences() -> dict[str, np.ndarray]:
+    """The recorded test sentences (tests-e2e/speech/), by text: `english-hello_robot.wav` is
+    "hello robot"."""
+    return {
+        p.stem.split("-", 1)[1].replace("_", " "): _read_sentence(p)
+        for p in sorted(SPEECH.glob("*.wav"))
+    }
+
+
+def say_to_the_robot(nao, sentences, text: str) -> None:
+    """Plays a sentence into the fake room and waits for its end."""
+    nao.audio.play(sentences[text], 16000)
+    time.sleep(len(sentences[text]) / 16000)
 
 
 def wait_until(check: Callable[[], bool], timeout: float, what: str) -> None:

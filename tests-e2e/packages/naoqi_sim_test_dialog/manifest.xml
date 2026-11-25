@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<package uuid="naoqi_sim_test_dialog" version="1.0.0">
+  <names><name lang="en_US">naoqi-sim test dialog</name></names>
+  <descriptions><description lang="en_US">A dialog topic written for naoqi-sim's live tests: it joins the main dialog as any dialog package does.</description></descriptions>
+  <supportedLanguages><language>en_US</language><language>fr_FR</language></supportedLanguages>
+  <descriptionLanguages><language>en_US</language></descriptionLanguages>
+  <contents>
+    <dialogContent topicName="naoqi_sim_test" typeVersion="1.0">
+      <topic language="en_US" path="naoqi_sim_test/naoqi_sim_test_enu.top"/>
+      <topic language="fr_FR" path="naoqi_sim_test/naoqi_sim_test_frf.top"/>
+    </dialogContent>
+  </contents>
+</package>
