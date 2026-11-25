@@ -406,7 +406,7 @@ def test_every_method_the_dialog_calls_is_there(nao, asr):
         assert hasattr(asr, name), name
     assert asr._isFreeSpeechToTextAvailable() is False
     assert asr._remoteConsumptionOk() == 0
-    assert asr._getVersion() == {"2.1": "2.1.4.13", "2.8": "2.8.7.4"}[nao.version.name]
+    assert asr._getVersion() == "4.5"  # a NAO 2.1.4.13's answer
     assert asr.getParameter("Sensitivity") == pytest.approx(0.5)
     if nao.version.name == "2.8":
         assert nao.service("_AsrCompiler1").init() is True

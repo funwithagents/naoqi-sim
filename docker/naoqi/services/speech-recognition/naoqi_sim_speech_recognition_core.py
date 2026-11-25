@@ -858,7 +858,7 @@ COMMON = [
     ("_disableFreeSpeechToText", 0, {}, _none),
     ("_isFreeSpeechToTextAvailable", 0, {}, _const(False)),
     ("_remoteConsumptionOk", 0, {}, _const(0)),
-    ("_getVersion", 0, {}, None),  # set per version below
+    ("_getVersion", 0, {}, None),  # set below
     ("_silentNextBipOn", 0, {}, _none),
     ("_silentNextBipOff", 0, {}, _none),
     ("_setDefaultLanguage", 1, {}, _none),
@@ -892,7 +892,9 @@ ONLY_28 = [
     ("_stopEarsRotation", 0, {}, lambda s: s.feedback.stop_ears()),
 ]
 
-VERSIONS = {"2.1": "2.1.4.13", "2.8": "2.8.7.4"}
+# What a NAO 2.1.4.13 answers (measured, not NAOqi's version); no 2.8 robot was measured, so 2.8
+# answers the same.
+VERSIONS = {"2.1": "4.5", "2.8": "4.5"}
 
 
 def methods(version):
