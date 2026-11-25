@@ -226,23 +226,6 @@ class JsonLog(object):
 
 # --- the stubs' tables -------------------------------------------------------------------
 
-ENGAGEMENT_EVENTS = ["EngagementZones/" + e for e in (
-    "FirstLimitDistanceUpdated", "LastMovementsInZone1", "LastMovementsInZone2", "LastMovementsInZone3",
-    "LimitAngleUpdated", "MovementsInZonesUpdated", "PeopleInZone1", "PeopleInZone2", "PeopleInZone3",
-    "PeopleInZonesUpdated", "PersonApproached", "PersonEnteredZone1", "PersonEnteredZone2",
-    "PersonEnteredZone3", "PersonMovedAway", "SecondLimitDistanceUpdated")]
-ENGAGEMENT_KEYS = ["EngagementZones/" + k for k in (
-    "PeopleInZone1", "PeopleInZone2", "PeopleInZone3", "LastMovementsInZone1", "LastMovementsInZone2",
-    "LastMovementsInZone3")]
-ENGAGEMENT_SETTINGS = {"LimitAngle": 90.0, "FirstLimitDistance": 1.5, "SecondLimitDistance": 2.5}
-ENGAGEMENT_METHODS = GENERICS + [
-    ("setLimitAngle", 1, {}, setter("LimitAngle")), ("getLimitAngle", 0, {}, getter("LimitAngle")),
-    ("setFirstLimitDistance", 1, {}, setter("FirstLimitDistance")),
-    ("getFirstLimitDistance", 0, {}, getter("FirstLimitDistance")),
-    ("setSecondLimitDistance", 1, {}, setter("SecondLimitDistance")),
-    ("getSecondLimitDistance", 0, {}, getter("SecondLimitDistance")),
-    ("computeEngagementZone", 4, {3: "None"}, const(0)),
-]
 GAZE_EVENTS = ["GazeAnalysis/PeopleLookingAtRobot", "GazeAnalysis/PersonStartsLookingAtRobot",
                "GazeAnalysis/PersonStopsLookingAtRobot"]
 GAZE_SETTINGS = {"FaceAnalysisEnabled": False, "Tolerance": 0.2}
@@ -307,8 +290,7 @@ class Stub(object):
 
 
 STUBS = [
-    Stub("ALEngagementZones", "ALEngagementZones", ENGAGEMENT_METHODS, ENGAGEMENT_EVENTS, ENGAGEMENT_KEYS,
-         ENGAGEMENT_SETTINGS, {"limitAngleChanged": "(f)", "firstLimitChanged": "(f)", "secondLimitChanged": "(f)"}),
+    # ALEngagementZones is a module of its own, computing the zones (engagement-zones.md)
     Stub("ALGazeAnalysis", "ALGazeAnalysis", GAZE_METHODS, GAZE_EVENTS, [], GAZE_SETTINGS),
     Stub("ALSittingPeopleDetection", "ALSittingPeopleDetection", SITTING_METHODS, SITTING_EVENTS, [], SITTING_SETTINGS),
     # a real NAO 2.1 has no waving detection: dropped there with the library

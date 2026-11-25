@@ -23,9 +23,8 @@ FACE_AHEAD = (
 )  # a face 1 m ahead, 0.3 m to the robot's left, at head height (FRAME_ROBOT)
 PLANE_HEIGHT = 0.40  # naoqi-viewer's face plane (m); the pictured face about half of it
 STUBS = {
-    "2.1": ["ALEngagementZones", "ALGazeAnalysis", "ALSittingPeopleDetection"],
+    "2.1": ["ALGazeAnalysis", "ALSittingPeopleDetection"],
     "2.8": [
-        "ALEngagementZones",
         "ALGazeAnalysis",
         "ALSittingPeopleDetection",
         "ALWavingDetection",
@@ -360,10 +359,77 @@ def test_the_stubs_answer_the_extractor_api_without_detecting(nao):
         assert stub.isProcessing() is False and stub.isPaused() is False
         stub.unsubscribe("test")
         assert stub.getSubscribersInfo() == []
+
+
+def test_the_engagement_zones_follow_a_naos_rule_and_settings(nao):
     zones = nao.service("ALEngagementZones")
-    zones.setFirstLimitDistance(1.2)
-    assert zones.getFirstLimitDistance() == pytest.approx(1.2)
-    assert zones.computeEngagementZone(0.5, 0.0, 0.0) == 0
+    assert zones.computeEngagementZone(1.5, 0.0, 0.0) == 1  # the limits are inclusive
+    assert zones.computeEngagementZone(2.0, 0.0, 1.0) == 2  # the height is ignored
+    assert zones.computeEngagementZone(0.0, 1.0, 0.0) == 2  # exactly sideways
+    assert zones.computeEngagementZone(-1.0, 0.0, 0.0) == 1  # behind counts as in front
+    assert zones.computeEngagementZone(3.0, 0.0, 0.0) == 3
+    camera = [0.0, 0.0, 0.5, 0.0, 0.0, 0.0]  # a camera looking ahead
+    assert zones.computeEngagementZone(0.0, 0.0, 2.0, camera) == 2
+    try:
+        zones.setFirstLimitDistance(1.2)
+        assert zones.getFirstLimitDistance() == pytest.approx(1.2)
+        assert zones.computeEngagementZone(1.4, 0.0, 0.0) == 2
+        with pytest.raises(
+            RuntimeError, match="The limit angle must be between 0 and 180"
+        ):
+            zones.setLimitAngle(200.0)
+        assert zones.getLimitAngle() == pytest.approx(90.0)
+    finally:
+        zones.setFirstLimitDistance(1.5)
+
+
+def test_a_face_walking_in_is_sorted_into_the_zones(nao, standing):
+    """A face prop at 2 m is in zone 2; brought to 1 m it approaches and enters zone 1; taken
+    away, the population empties and so do the lists (engagement-zones.md)."""
+    memory = nao.service("ALMemory")
+    people = nao.service("ALPeoplePerception")
+    zones = nao.service("ALEngagementZones")
+    camera_z = nao.service("ALMotion").getPosition(TOP_CAMERA, 2, True)[2]
+    people.subscribe("test_zones", 200, 0.0)
+    zones.subscribe("test_zones", 200, 0.0)
+    events = Events(
+        nao,
+        "EngagementZones/PersonEnteredZone1",
+        "EngagementZones/PersonEnteredZone2",
+        "EngagementZones/PersonApproached",
+    )
+    state = nao.sim.props.spawn("face", (2.0, 0.0, camera_z), frame="robot")
+    try:
+        wait_until(
+            lambda: memory.getData("EngagementZones/PeopleInZone2") != [],
+            8.0,
+            "a person in zone 2",
+        )
+        (pid,) = memory.getData("EngagementZones/PeopleInZone2")
+        assert memory.getData(f"PeoplePerception/Person/{pid}/EngagementZone") == 2
+        assert events.of("EngagementZones/PersonEnteredZone2") == [pid]
+        nao.sim.props.place(
+            state.name, (1.0, 0.0, camera_z), duration=1.0, frame="robot"
+        )
+        wait_until(
+            lambda: memory.getData("EngagementZones/PeopleInZone1") == [pid],
+            8.0,
+            "the person in zone 1",
+        )
+        assert events.of("EngagementZones/PersonApproached") == [pid]
+        assert events.of("EngagementZones/PersonEnteredZone1") == [pid]
+        assert memory.getData("EngagementZones/PeopleInZone2") == []
+        nao.sim.props.despawn(state.name)
+        # forgotten after the people module's delay (10 s), the lists emptied
+        wait_until(
+            lambda: memory.getData("EngagementZones/PeopleInZone1") == [],
+            15.0,
+            "the lists emptied",
+        )
+    finally:
+        nao.sim.props.clear()
+        zones.unsubscribe("test_zones")
+        people.unsubscribe("test_zones")
 
 
 def test_the_service_list_is_a_naos_plus_face_detection(nao):

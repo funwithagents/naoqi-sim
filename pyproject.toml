@@ -101,6 +101,7 @@ extraPaths = [
     "docker/naoqi/services/status-service",
     "docker/naoqi/services/face-detection",
     "docker/naoqi/services/people-perception",
+    "docker/naoqi/services/engagement-zones",
     "docker/naoqi/services/perception-stubs",
     "docker/naoqi/services/speech-recognition",
     "docker/tts-engine",
