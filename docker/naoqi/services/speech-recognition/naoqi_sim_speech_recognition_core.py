@@ -39,8 +39,6 @@ DEFAULT_PERIOD = 30  # a subscriber's period, as the robot lists it
 WAIT_S = 2.0  # how long subscribe, unsubscribe and pause wait for the statuses
 GUARD_S = 0.35  # audio dropped after (re)starting to listen: the bip, the robot's last words
 VOCABULARY_GRAMMAR = "modifiable_grammar"
-SENTENCES_TIMEOUT_S = 5.0
-SKIPPED_TOPICS = ("lexicon", "skin")  # word libraries the other topics include
 RESET = ["", -3.0]  # WordRecognized when listening stops
 
 STATUS = NAME + "/Status"
@@ -229,7 +227,7 @@ class Feedback(object):
 
 class _Context(object):
     def __init__(self, grammar_=None):
-        self.grammar = grammar_  # 2.1: the compiled grammar; 2.8: None
+        self.grammar = grammar_  # the grammar the dialog compiled for it, or None
         self.active = set()  # the activated rules
         self.slots = {}  # 2.1: slot -> word list
         self.params = {}
@@ -245,11 +243,10 @@ class Recognition(object):
     feedback: a `Feedback`; it plays and lights by itself on 2.1 only (on 2.8 a NAO's
     signs-and-feedback application calls the hidden methods that drive it).
     dialog(): ALDialog's proxy, None while it is not registered.
-    sentences(topic, language): 2.8, the user rules' sentences of a topic, None on failure.
     installed: the installed speech languages, in NAOqi's names."""
 
     def __init__(self, version, memory, engine, listen, unlisten, feedback, dialog,
-                 sentences=None, installed=LANGUAGES, log=_stderr, start=True):
+                 installed=LANGUAGES, log=_stderr, start=True):
         self.version = version
         self.memory = memory
         self.engine = engine
@@ -257,7 +254,6 @@ class Recognition(object):
         self._unlisten = unlisten
         self.feedback = feedback
         self._dialog = dialog
-        self._sentences = sentences
         self._log = log
         self.languages = [l for l in installed if l in LANGUAGES]
         self.language = self.languages[0] if self.languages else ""
@@ -277,8 +273,6 @@ class Recognition(object):
         self.contexts = {}  # name -> _Context
         self.compiled = {}  # 2.1: lcf path -> Grammar
         self.context_sets = {}  # 2.8: name -> [contexts]
-        self._sentence_cache = {}
-        self._fetching = set()  # 2.8: the topics whose sentences are being asked for
         self._dirty = True
 
         # the worker's own state
@@ -428,7 +422,7 @@ class Recognition(object):
         self._changed()
 
     def compile(self, bnf, lcf, language):
-        """2.1: the dialog wrote its grammar at `bnf`; it will add it as a context by `lcf`."""
+        """The dialog wrote its grammar at `bnf`; it will add it as a context by `lcf`."""
         try:
             parsed = grammar.Grammar(grammar.read_text(bnf))
         except (IOError, OSError, grammar.GrammarError) as e:
@@ -445,13 +439,17 @@ class Recognition(object):
             self._log("compile(%r): could not write %r: %s" % (bnf, lcf, e))
 
     def add_context(self, lcf, name):
+        """The dialog adds the grammar it had compiled to `lcf` as the context `name`
+        (`addContext` on 2.1, `createContext` on 2.8)."""
         with self._lock:
             parsed = self.compiled.get(lcf)
-            if parsed is None and self.version == "2.1" and lcf.endswith(".lcf"):
+            if parsed is None and lcf.endswith(".lcf"):
                 try:  # a context compiled before this module loaded
                     parsed = grammar.Grammar(grammar.read_text(lcf[:-4] + ".bnf"))
                 except (IOError, OSError, grammar.GrammarError):
                     parsed = None
+            if parsed is None:
+                self._log("the context %r has no grammar (%r): nothing to listen for in it" % (name, lcf))
             self.contexts[name] = _Context(parsed)
         self._dialog_changed()
 
@@ -516,10 +514,7 @@ class Recognition(object):
             return sorted(ctx.grammar.activatable)
 
     # 2.8
-    def create_context(self, lcf, name):
-        with self._lock:
-            self.contexts[name] = _Context()
-        self._dialog_changed()
+    create_context = add_context
 
     def get_contexts(self):
         with self._lock:
@@ -566,59 +561,13 @@ class Recognition(object):
         name = contexts[0][0] if contexts else ""
         found = []
         seen = set()
-        if self.version == "2.1":
-            for _, ctx in contexts:
-                if ctx.grammar is not None:
-                    for p in ctx.grammar.phrases(ctx.active, ctx.slots):
-                        if p not in seen:
-                            seen.add(p)
-                            found.append(p)
-            return found, False, name, True
-        topics = set()
         for _, ctx in contexts:
-            for rule in ctx.active:
-                topic = rule.split(" ")[0]
-                if rule != "start" and not topic.startswith(SKIPPED_TOPICS):
-                    topics.add(topic)
-        for topic in sorted(topics):
-            key = (topic, language)
-            if key not in self._sentence_cache:
-                self._fetch(key)  # listened for once they arrive
-                continue
-            for p in self._sentence_cache[key]:
-                if p not in seen:
-                    seen.add(p)
-                    found.append(p)
-        for key in list(self._sentence_cache):  # a topic reloaded later is asked again
-            if key[0] not in topics:
-                del self._sentence_cache[key]
+            if ctx.grammar is not None:
+                for p in ctx.grammar.phrases(ctx.active, ctx.slots):
+                    if p not in seen:
+                        seen.add(p)
+                        found.append(p)
         return found, False, name, True
-
-    def _fetch(self, key):
-        """2.8: asks the dialog for a topic's sentences on a thread of its own. The dialog may be
-        the caller waiting on this module (pause), so the worker never waits on the dialog."""
-        with self._lock:
-            if key in self._fetching or self._sentences is None:
-                return
-            self._fetching.add(key)
-
-        def fetch():
-            got = None
-            try:
-                got = self._sentences(key[0], key[1])
-            finally:
-                with self._lock:
-                    self._fetching.discard(key)
-                    if got is None:
-                        self._log("no sentences for the topic %s" % key[0])
-                        got = []
-                    self._sentence_cache[key] = got
-                    self._dirty = True
-                self._changed()
-
-        thread = threading.Thread(target=fetch, name="ALSpeechRecognition-sentences")
-        thread.daemon = True
-        thread.start()
 
     # --- the worker ----------------------------------------------------------------------------
 
@@ -909,9 +858,15 @@ def methods(version):
     return table
 
 
+def _compile(s, bnf, lcf, language):
+    s.compile(bnf, lcf, language)
+    return True
+
+
+# 2.8: the service the dialog gives its grammar to; it shares the recognition's state
 COMPILER_METHODS = [
     ("init", 0, {}, _const(True)),
-    ("compile", 0, {}, _const(True)),
+    ("compile", 3, {}, _compile),
     ("destroy", 0, {}, _const(True)),
 ]
 

@@ -233,8 +233,8 @@ def test_awareness_turns_the_head_toward_a_face(nao, standing):
     yaw = 0.4
     awareness = nao.service("ALBasicAwareness")
     motion = nao.service("ALMotion")
-    # Restarted in head mode before the face appears: on 2.8 life runs awareness from boot in
-    # BodyRotation mode and would track the face before the test watches, and a tracking that
+    # Restarted in head mode before the face appears: life, when an earlier test left it on, runs
+    # awareness in BodyRotation mode and would track the face before the test watches, and a tracking that
     # failed once (the FastPersonTracking modularity process, naoqi-fidelity.md) leaves it deaf
     # until restarted.
     awareness.stopAwareness()
@@ -407,8 +407,8 @@ def test_life_opens_a_user_session_on_a_tracked_face(request, nao, standing):
     )
     life = nao.service("ALAutonomousLife")
     sessions = nao.service("ALUserSession")
-    # Through disabled first: 2.8 boots in solitary, and entering it again is what restarts the
-    # awareness an earlier test stopped.
+    # Through disabled first: an earlier test may have left life on, and entering solitary again is
+    # what restarts the awareness an earlier test stopped.
     life.setState("disabled")
     life.setState("solitary")
     time.sleep(2.0)
@@ -417,7 +417,7 @@ def test_life_opens_a_user_session_on_a_tracked_face(request, nao, standing):
         wait_until(lambda: sessions.getFocusedUser() != -1, 15.0, "a user session")
         assert sessions.getOpenUserSessions() == [sessions.getFocusedUser()]
         ident = nao.service("_UserIdentification")
-        # life runs from boot on 2.8: earlier faces were stored as users too
+        # earlier tests ran life too: their faces were stored as users
         assert sessions.getFocusedUser() in ident.getStoredUsers()
     finally:
         life.setState("disabled")

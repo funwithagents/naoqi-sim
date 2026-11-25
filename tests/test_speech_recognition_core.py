@@ -122,7 +122,10 @@ class Dialog:
 
 class Rig:
     def __init__(
-        self, version, installed=("English", "French"), engine=True, sentences=None
+        self,
+        version,
+        installed=("English", "French"),
+        engine=True,
     ):
         self.trace = Trace()
         self.engine = Engine(self.trace) if engine else None
@@ -137,7 +140,6 @@ class Rig:
             self._unlisten,
             Feedback(self.trace),
             lambda: self.dialog,
-            sentences=sentences,
             installed=installed,
             log=lambda msg: None,
         )
@@ -419,48 +421,51 @@ def test_the_21_dialogs_grammar_is_compiled_and_its_active_rules_listened_for(
     )
 
 
-def test_the_28_dialogs_topics_are_listened_for_through_their_sentences(rig):
-    asked: list[tuple] = []
-
-    def sentences(topic, language):
-        asked.append((topic, language))
-        return {"greet": ["hello robot", "my name is <...>"], "other": ["goodbye"]}.get(
-            topic
-        )
-
-    r = rig("2.8", sentences=sentences)
+def test_the_28_dialogs_grammar_comes_through_its_compiler_service(rig, tmp_path: Path):
+    r = rig("2.8")
+    bnf, lcf = tmp_path / "BNFwelcomeEnglish.bnf", tmp_path / "BNFwelcomeEnglish.lcf"
+    bnf.write_text(BNF)
+    # what the 2.8 dialog calls, in its order (measured): the grammar to the compiler service,
+    # then the context on the recognition, its rules, its sets
+    compile_ = {name: handler for name, _, _, handler in core.COMPILER_METHODS}[
+        "compile"
+    ]
+    assert compile_(r.rec, str(bnf), str(lcf), "English") is True
+    assert lcf.exists()  # the dialog looks for the file before it starts
     r.rec.create_context_set([], "SLM")
-    r.rec.create_context(
-        "/home/nao/.local/share/dialog/BNFwelcomeEnglish.lcf", "BNFwelcomeEnglish"
-    )
+    r.rec.create_context(str(lcf), "BNFwelcomeEnglish")
     r.rec.deactivate_all_rules("BNFwelcomeEnglish")
     r.rec.activate_rule("BNFwelcomeEnglish", "start")
-    r.rec.activate_rule("BNFwelcomeEnglish", "greet trig")
-    r.rec.activate_rule(
-        "BNFwelcomeEnglish", "lexicon_enu trig"
-    )  # a word library: skipped
     r.rec.create_context_set(["BNFwelcomeEnglish"], "BNF")
     assert r.rec.get_context_sets() == ["BNF", "SLM"]
+    r.rec.activate_rule("BNFwelcomeEnglish", "greet trig")
+    r.rec.add_word_list_to_slot("BNFwelcomeEnglish", "robotname", ["nao"])
     r.rec.subscribe("ALDialogWordRecognized")
-    # the sentences come from another thread: the session opens again once they are there
-    deadline = time.monotonic() + 3
-    while time.monotonic() < deadline and r.engine.sessions[-1][1] == []:
-        time.sleep(0.02)
-    assert r.engine.sessions[-1] == (
-        "English",
-        ["hello robot", "my name is <...>"],
-        False,
-    )
-    assert asked == [("greet", "English")]
+    assert r.engine.sessions[-1] == ("English", ["hello nao"], False)
     # 2.8 plays and lights nothing by itself: a NAO 6's feedback application does
     assert not any(k in ("bip", "leds") for k, *_ in r.trace.items)
 
     m = r.mark()
-    r.hear(final("hello robot", 1.0))
+    r.hear(final("hello nao", 1.0))
     r.trace.wait(lambda items: ("dialog", "end") in items[m:])
-    assert ("dialog", "words", ["hello robot", 1.0, "BNFwelcomeEnglish"], 2) in r.since(
-        m
-    )
+    assert ("dialog", "words", ["hello nao", 1.0, "BNFwelcomeEnglish"], 2) in r.since(m)
+
+    # a list the dialog fills later (an application's name) is listened for from then on
+    r.rec.add_word_list_to_slot("BNFwelcomeEnglish", "robotname", ["nao", "robot"])
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and len(r.engine.sessions[-1][1]) < 2:
+        time.sleep(0.02)
+    assert r.engine.sessions[-1][1] == ["hello nao", "hello robot"]
+
+
+def test_a_context_without_a_grammar_is_listened_for_as_nothing(rig, tmp_path: Path):
+    """The dialog names a compiled file it never had compiled: the context exists, empty."""
+    r = rig("2.8")
+    r.rec.create_context(str(tmp_path / "missing.lcf"), "")
+    r.rec.activate_rule("", "start")
+    r.rec.subscribe("ALDialogWordRecognized")
+    assert r.engine.sessions[-1] == ("English", [], False)
+    assert r.rec.get_contexts() == [""]
 
 
 def test_without_an_engine_the_statuses_follow_and_the_microphones_stay_free(rig):

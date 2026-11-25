@@ -146,6 +146,27 @@ vision_2d() {
   done
 }
 
+# choose_languages: chooses each installed language in turn, the robot's own (the first) last, as a
+# NAO 6's settings page does when its user picks a language: speech, recognition, then the dialog.
+# The 2.8 dialog writes its grammar for the languages chosen this way, at its next preload, and
+# gives it to the recognition (specs/services/speech-recognition.md, "What it listens for").
+# A language the recognition does not have (no model in the engine) is left out.
+choose_languages() {
+  local languages=${NAOQI_SIM_LANGUAGES:-English} language i service recognised
+  recognised=$(call ALSpeechRecognition.getAvailableLanguages 2>/dev/null) || fail "ALSpeechRecognition.getAvailableLanguages failed"
+  IFS=, read -r -a languages <<<"$languages"
+  for ((i = ${#languages[@]} - 1; i >= 0; i--)); do
+    language=${languages[i]}
+    if [[ $recognised != *"\"$language\""* ]]; then
+      log "$language is not chosen: the recognition does not have it"
+      continue
+    fi
+    for service in ALTextToSpeech ALSpeechRecognition ALDialog; do
+      call "$service.setLanguage" "$language" >/dev/null 2>&1 || fail "$service.setLanguage $language failed"
+    done
+  done
+}
+
 # mark_ready: the whole sequence succeeded. Then wait on naoqi-bin (signals are forwarded to it).
 mark_ready() {
   call NaoqiSim.setReady >/dev/null 2>&1 || fail "NaoqiSim.setReady failed: the status module is not loaded"
