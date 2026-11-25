@@ -38,8 +38,9 @@ FAILURES = 3  # consecutive failed deliveries that unsubscribe a subscriber...
 FAILING_S = 2.0  # ...once they span this long (a new subscriber may not be reachable at once)
 RETRY_S = 1.0  # between attempts to reach the host
 # How long subscribe() waits for a service just registered to become visible: on 2.1 a qi
-# service registered an instant before is not yet reachable through the broker's ALProxy.
-EXISTS_WAIT_S = 1.0
+# service registered an instant before is not yet reachable through the broker's ALProxy, and
+# on a loaded machine (a CI runner, 2.8 just booted) a service took more than 1 s to appear.
+EXISTS_WAIT_S = 5.0
 EXISTS_POLL_S = 0.05
 
 _LENGTHS = struct.Struct(">II")
