@@ -110,37 +110,48 @@ class Session:
         return {"speech": self.speech, "final": final}
 
     def decide(self, result):
-        """What an utterance's result means: the phrase it equals, or "" (unknown speech)."""
+        """What an utterance's result means: the phrase heard, or "" (unknown speech). Without
+        word spotting the utterance must equal a phrase; with it (or on the side of a phrase
+        that has a `<...>` marker) other speech may come before and after, whatever the
+        recogniser made of it (it may hear an unknown word as one of the list's words), and
+        the longest phrase found as consecutive words wins."""
         text = result.get("text", "")
         tokens = text.split()
-        lead = trail = False
-        while tokens and tokens[0] == UNKNOWN:
-            tokens.pop(0)
-            lead = True
-        while tokens and tokens[-1] == UNKNOWN:
-            tokens.pop()
-            trail = True
-        key = " ".join(tokens)
-        entry = self.phrases.get(key) if UNKNOWN not in tokens else None
-        if entry is not None:
-            _, lead_ok, trail_ok = entry
-            if (lead and not (self.word_spotting or lead_ok)) or (
-                trail and not (self.word_spotting or trail_ok)
-            ):
-                entry = None
+        words = result.get("result", [])
+        best = None
+        for i in range(len(tokens)):
+            for j in range(len(tokens), i, -1):
+                if best is not None and j - i <= best[1] - best[0]:
+                    break
+                entry = self.phrases.get(" ".join(tokens[i:j]))
+                if entry is None or UNKNOWN in tokens[i:j]:
+                    continue
+                _, lead_ok, trail_ok = entry
+                if (i > 0 and not (self.word_spotting or lead_ok)) or (
+                    j < len(tokens) and not (self.word_spotting or trail_ok)
+                ):
+                    continue
+                best = (i, j, entry)
+        if best is None:
+            return {
+                "phrase": "",
+                "confidence": 0.0,
+                "text": text,
+                "lead": False,
+                "trail": False,
+            }
+        i, j, entry = best
+        # the phrase's own words' confidences, when the result lists every word of the text
+        span = words[i:j] if len(words) == len(tokens) else words
         confidences = [
-            float(w.get("conf", 1.0))
-            for w in result.get("result", [])
-            if w.get("word") != UNKNOWN
+            float(w.get("conf", 1.0)) for w in span if w.get("word") != UNKNOWN
         ]
         return {
-            "phrase": entry[0] if entry is not None else "",
-            "confidence": round(min(confidences), 4)
-            if entry is not None and confidences
-            else 0.0,
+            "phrase": entry[0],
+            "confidence": round(min(confidences), 4) if confidences else 0.0,
             "text": text,
-            "lead": lead,
-            "trail": trail,
+            "lead": i > 0,
+            "trail": j < len(tokens),
         }
 
 

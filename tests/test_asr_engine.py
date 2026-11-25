@@ -158,6 +158,35 @@ def test_word_spotting_allows_unknown_speech_around_a_phrase_and_says_where():
     assert final["confidence"] == 0.8
 
 
+def test_word_spotting_finds_a_phrase_among_words_of_the_list_heard_around_it():
+    # measured on a real voice: "tell me what time is it please" with only "what time is it"
+    # in the list, "please" heard as "is"
+    session, _ = _session(
+        [("final", "[unk] what time is it is", [1.0, 0.9, 0.9, 0.6, 0.9, 0.3])],
+        spotting=True,
+    )
+    final = session.feed(b"\0\0")["final"]
+    assert final["phrase"] == "what time is it"
+    assert final["lead"] and final["trail"]
+    assert final["confidence"] == 0.6  # the phrase's own words, not the stray "is"
+
+
+def test_without_word_spotting_words_of_the_list_around_a_phrase_reject_it():
+    session, _ = _session([("final", "what time is it is", [1.0] * 5)])
+    assert session.feed(b"\0\0")["final"]["phrase"] == ""
+
+
+def test_word_spotting_prefers_the_longest_phrase_heard():
+    session, _ = _session(
+        [("final", "[unk] hello robot what time is it", [1.0] * 7)],
+        phrases=["hello robot", "what time is it", "robot"],
+        spotting=True,
+    )
+    final = session.feed(b"\0\0")["final"]
+    assert final["phrase"] == "what time is it"
+    assert final["lead"] and not final["trail"]
+
+
 def test_a_phrase_with_markers_allows_unknown_speech_only_where_it_has_them():
     phrases = ["<...> hello robot", "what time is it <...>"]
     for heard, expected in [

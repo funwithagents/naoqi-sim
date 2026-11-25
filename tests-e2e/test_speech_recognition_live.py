@@ -1,5 +1,5 @@
 """ALSpeechRecognition on a running naoqi-sim stack (specs/services/speech-recognition.md): sentences
-from tests-e2e/speech/ (synthesised once, committed) played into the fake room, recognised for a
+from tests-e2e/speech/ (a person's voice recorded on a NAO, committed) played into the fake room, recognised for a
 script's vocabulary and for a dialog topic loaded by hand, on both versions."""
 
 import threading
@@ -278,13 +278,11 @@ def test_french_is_recognised_in_french(nao, asr, events, sentences):
     with pytest.raises(RuntimeError, match="does not support the following language"):
         asr.setLanguage("German")
     asr.setLanguage("French")
-    with listening(asr, ["bonjour je voudrais une pomme rouge", "bonjour"]):
+    with listening(asr, ["je veux une pomme", "bonjour"]):
         mark = events.mark()
-        say_to_the_robot(nao, sentences, "bonjour je voudrais une pomme rouge")
+        say_to_the_robot(nao, sentences, "je veux une pomme")
         events.wait_word(mark)
-        assert [p for p, _ in events.words(mark)] == [
-            "bonjour je voudrais une pomme rouge"
-        ]
+        assert [p for p, _ in events.words(mark)] == ["je veux une pomme"]
 
 
 def test_the_vocabulary_cannot_change_while_listening(nao, asr):
