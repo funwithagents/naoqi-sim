@@ -13,6 +13,7 @@ from naoqi_sim.config import (
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
+    SpeechRecognitionSettings,
     SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
@@ -66,6 +67,7 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
             },
             "viewer": {"headless": True, "scene": "table", "variant": "placeholder"},
             "perception": {"enabled": False},
+            "speech_recognition": {"enabled": False},
         }
     )
 
@@ -166,6 +168,7 @@ def test_every_default_is_declared_once_on_the_dataclass():
         VideoInputSettings,
         ViewerSettings,
         PerceptionSettings,
+        SpeechRecognitionSettings,
     ):
         assert cls.from_dict({}) == cls()
         assert {f.name for f in fields(cls)} == set(cls().to_dict())
@@ -253,6 +256,19 @@ def test_the_installed_languages_keep_their_order_and_name_the_voiceless_ones():
 
     error = error_for({"speech": {"languages": ["Japanese"]}})
     assert "'Japanese' has no voice" in str(error) and "Czech" in str(error)
+
+
+def test_the_speech_recognition_engine_is_on_unless_the_config_turns_it_off():
+    assert NaoqiSimConfig().speech_recognition == SpeechRecognitionSettings(
+        enabled=True
+    )
+    off = NaoqiSimConfig.from_dict({"speech_recognition": {"enabled": False}})
+    assert not off.speech_recognition.enabled
+    assert NaoqiSimConfig.from_dict(off.to_dict()) == off
+    bad = error_for({"speech_recognition": {"enabled": "off"}})
+    assert bad.key == "speech_recognition.enabled"
+    unknown = error_for({"speech_recognition": {"languages": ["English"]}})
+    assert unknown.key == "speech_recognition"
 
 
 def test_the_perception_engine_is_on_unless_the_config_turns_it_off():

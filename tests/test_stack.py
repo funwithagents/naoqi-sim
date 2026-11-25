@@ -11,7 +11,12 @@ import pytest
 from ports import free_port
 
 from naoqi_sim import stack
-from naoqi_sim.config import NaoqiSettings, NaoqiSimConfig, PerceptionSettings
+from naoqi_sim.config import (
+    NaoqiSettings,
+    NaoqiSimConfig,
+    PerceptionSettings,
+    SpeechRecognitionSettings,
+)
 from naoqi_sim.errors import DockerUnavailableError, NaoqiSimError
 from naoqi_sim.stack import ContainerState, NaoqiSimStatus
 
@@ -107,21 +112,31 @@ def test_both_need_docker(docker):
         asyncio.run(stack.cleanup())
 
 
-def test_the_services_and_environment_follow_the_perception_switch():
+def test_the_services_and_environment_follow_the_engines_switches():
     on = NaoqiSimConfig(naoqi=NaoqiSettings(version="2.8"))
     off = NaoqiSimConfig(perception=PerceptionSettings(enabled=False))
-    assert stack.services(on) == ["tts", "perception", "naoqi28"]
-    assert stack.services(off) == ["tts", "naoqi21"]
+    deaf = NaoqiSimConfig(speech_recognition=SpeechRecognitionSettings(enabled=False))
+    assert stack.services(on) == ["tts", "perception", "asr", "naoqi28"]
+    assert stack.services(off) == ["tts", "asr", "naoqi21"]
+    assert stack.services(deaf) == ["tts", "perception", "naoqi21"]
     assert stack.compose_env(on)["NAOQI_SIM_PERCEPTION_URL"] == "http://perception:8080"
     assert stack.compose_env(off)["NAOQI_SIM_PERCEPTION_URL"] == ""
+    assert stack.compose_env(on)["NAOQI_SIM_ASR_URL"] == "http://asr:8080"
+    assert stack.compose_env(deaf)["NAOQI_SIM_ASR_URL"] == ""
+    assert (
+        stack.compose_env(deaf)["NAOQI_SIM_PERCEPTION_URL"] == "http://perception:8080"
+    )
 
 
-def test_a_status_without_the_perception_key_reads_none(monkeypatch):
-    # An image built before the perception modules has no NaoqiSim/Perception/Source key.
+def test_a_status_without_an_engines_key_reads_none(monkeypatch):
+    # An image built before the perception modules has no NaoqiSim/Perception/Source key; this
+    # one has the speech recognition's.
     class Memory:
         def getData(self, key):
             if key.startswith("NaoqiSim/Perception"):
                 raise RuntimeError("ALMemory::getData\n\tData not found " + key)
+            if key.startswith("NaoqiSim/SpeechRecognition"):
+                return "engine"
             return "render" if "Camera" in key else "fake"
 
     class NaoqiSim:
@@ -143,7 +158,7 @@ def test_a_status_without_the_perception_key_reads_none(monkeypatch):
 
     monkeypatch.setattr(stack, "connect", lambda url=stack.URL: Session())
     assert stack.read_naoqisim_status() == NaoqiSimStatus(
-        "0.0.1", "2.1.4.13", True, "render", "fake", "none"
+        "0.0.1", "2.1.4.13", True, "render", "fake", "none", "engine"
     )
 
 

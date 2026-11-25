@@ -8,7 +8,7 @@ This overview is the map of the whole project and the authority for naoqi-sim. E
 
 ## Goals
 
-- Existing qi code, including Choregraphe behaviours, runs on naoqi-sim on NAOqi 2.1.4.13 and 2.8 and gets speech, audio, camera images, faces and people through the standard NAOqi services, with their documented methods, events and timing. naoqi-sim provides what a NAO's hardware and its face engine provide; speech recognition runs in the clients (see [Perception](#perception))).
+- Existing qi code, including Choregraphe behaviours, runs on naoqi-sim on NAOqi 2.1.4.13 and 2.8 and gets speech, audio, camera images, faces, people and speech recognition through the standard NAOqi services, with their documented methods, events and timing. naoqi-sim provides what a NAO's hardware, its face engine and its speech recognition provide (see [Perception](#perception) and [Speech recognition](#speech-recognition)).
 - One command (`naoqi-sim run`, after the one-time `naoqi-sim fetch-and-build-images`) reaches a running simulated NAO, given Docker and the user's Choregraphe suite, on the platforms the libqi wheels cover (macOS arm64, Linux x86_64 and Windows x64; see [Packaging](#packaging-and-platforms)).
 - No Aldebaran binary, robot package, mesh or derived file lands in the repository, a package or a published image.
 
@@ -17,12 +17,12 @@ This overview is the map of the whole project and the authority for naoqi-sim. E
 | In scope | Out of scope |
 | --- | --- |
 | NAOqi from the user's suite, Docker only, 2.1 and 2.8 | Running NAOqi natively on the host |
-| Override modules for the services the desktop NAOqi lacks: speech, audio input, sound files, face detection and people perception (with the modules that depend on the built-in people perception stubbed) | Reimplementing NAOqi, its walk engine, fall manager, or its other vision and audio algorithms |
+| Override modules for the services the desktop NAOqi lacks: speech, audio input, sound files, face detection and people perception (with the modules that depend on the built-in people perception stubbed), speech recognition | Reimplementing NAOqi, its walk engine, fall manager, or its other vision and audio algorithms |
 | Host devices: loudspeaker, microphone or sounds played from code, webcam or rendered camera | A physics simulation driving NAOqi (no simulator interface exists for it) |
 | The simulated world (window, rendered head cameras), through naoqi-viewer's sim mode | ROS / ROS 2, Webots |
 | A capability probe that measures what a NAOqi target offers | Client libraries: they connect to naoqi-sim as to any NAO (one may also run a `NaoqiSim` itself through the [API](runtime/api.md); naoqi-sim never depends on a client) |
 |  | The NAO model, the meshes and the 3D rendering: naoqi-viewer owns them |
-|  | Speech recognition, movement detection, gaze, sitting and waving detection: no replacement of `ALSpeechRecognition` or `ALMovementDetection`; the modules that depend on the built-in people perception are API-only stubs; clients that need more run their own on the camera and microphone streams |
+|  | Movement detection, gaze, sitting and waving detection: no replacement of `ALMovementDetection`; the modules that depend on the built-in people perception are API-only stubs; clients that need more run their own on the camera and microphone streams |
 |  | Robot packages beyond the `animations` package (sound set, `dialog_*`, dances): the user, or a client, installs them as on a robot |
 
 ## Architecture
@@ -68,7 +68,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Capability probe | Checked by hand only; deferred (see [below](#capability-probe)) |
 | Asset guard | Planned, deferred (see [Licensing](#licensing)) |
 | Face detection, people perception, the stubs of the dependents | Built and tested on both versions (Oct 29, 2026): `ALFaceDetection` added, `ALPeoplePerception` replaced, both on the `perception` container, the built-in awareness tracking face props and, on 2.8, life opening user sessions on them ([face-detection.md](services/face-detection.md), [people-perception.md](services/people-perception.md), [perception-stubs.md](services/perception-stubs.md), [perception-engine.md](container/perception-engine.md)) |
-| Speech recognition | Not naoqi-sim's: clients |
+| Speech recognition | Designed Nov 21, 2026 ([speech-recognition.md](services/speech-recognition.md), [asr-engine.md](container/asr-engine.md)): `ALSpeechRecognition` added (`_AsrCompiler1` on 2.8) on the `asr` container (Vosk, English and French), for scripts and for `ALDialog` |
 
 ## Licensing
 
@@ -85,6 +85,7 @@ The code is Apache-2.0. Nothing from Aldebaran is in the repository, a package o
 | libqi and its Python 3 bindings (BSD-3-Clause) | [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python), a fork of Aldebaran's libqi | Prebuilt wheels from the fork's package index on GitHub Pages, a runtime dependency |
 | Piper (`piper-tts`, GPL-3.0-or-later, eSpeak NG inside it, GPL-3.0) | PyPI | Installed into the `tts` image on the user's machine, never pushed: a GPL-governed container that naoqi-sim distributes as a recipe, not as an image ([tts-engine.md](container/tts-engine.md), "Engine") |
 | Piper voices (one per language; each voice's dataset licence CC0, public domain or CC BY 4.0, most voices fine-tuned from a research-only base) | `rhasspy/piper-voices` on Hugging Face, a pinned release | Never in the repository: two are downloaded into the image at its build, the others into a Docker volume on a language's first use; the voice table with each licence, the lineage and the posture are in [tts-engine.md](container/tts-engine.md), "Voices" |
+| Vosk (`vosk`, Apache-2.0) and its small English and French models (Apache-2.0) | PyPI; the project's model site | Installed into the `asr` image on the user's machine, the models fetched at the build and hash-pinned; neither in the repository ([asr-engine.md](container/asr-engine.md)) |
 | OpenCV (`opencv-python-headless`, Apache-2.0) and the YuNet face detection model (Apache-2.0) | PyPI; `opencv/opencv_zoo` at a pinned commit | Installed into the `perception` image on the user's machine, the model fetched at the build and hash-pinned; neither in the repository ([perception-engine.md](container/perception-engine.md)) |
 
 - `.gitignore` covers suite tarballs, `docker/image-data/`, meshes and textures. An automated asset guard (tree, wheel, sdist and Docker build context) is planned and deferred: it gets its spec when packaging starts.
@@ -164,7 +165,7 @@ Clients get camera images and microphone audio through the standard NAOqi servic
 
 Decided Oct 29, 2026, reversing the Oct 9 decision that left every detector to the clients: a sim that behaves like a NAO must detect faces and people, since the Face Detection and Face Tracker boxes, `ALTracker`, `ALBasicAwareness` and Autonomous Life's user sessions are built on them. naoqi-sim adds `ALFaceDetection` ([services/face-detection.md](services/face-detection.md)) and replaces `ALPeoplePerception` ([services/people-perception.md](services/people-perception.md)) inside NAOqi, as it replaced `ALTextToSpeech`: the modules read the frames `ALVideoDevice` serves, post them to the `perception` container ([container/perception-engine.md](container/perception-engine.md), OpenCV's YuNet), and publish `FaceDetected` and the people-perception contract with a NAO's formats and NAOqi's own angles and frames. The built-in awareness and tracker then turn the head toward a face prop ([host/props.md](host/props.md)) or a person in front of the webcam, and on 2.8 a user session opens on the tracked person. The modules whose modularity processes chain to the built-in people perception (`ALEngagementZones`, `ALGazeAnalysis`, `ALSittingPeopleDetection`, 2.8's `ALWavingDetection` and `_UserIdentification`; 2.8's tracking processes kept, with the shared settings they read loaded by naoqi-sim) are API-only stubs ([services/perception-stubs.md](services/perception-stubs.md)), so both images serve exactly their baseline's services. The survey behind these decisions is in `spike/RESULTS.md` ("Face detection and people perception survey").
 
-Still the clients': speech recognition (no `ALSpeechRecognition` on naoqi-sim; a client runs its own on the audio stream) and movement detection (the built-in `ALMovementDetection` stays, silent on the desktop). A client that does its own perception silences naoqi-sim's modules as it silences a robot's: `pause(True)` ([container/naoqi-fidelity.md](container/naoqi-fidelity.md)), never a replacement.
+Still the clients': movement detection (the built-in `ALMovementDetection` stays, silent on the desktop). A client that does its own perception silences naoqi-sim's modules as it silences a robot's: `pause(True)` ([container/naoqi-fidelity.md](container/naoqi-fidelity.md)), never a replacement.
 
 What was measured on both desktop suites (Oct 8 and 29, 2026) and decided the design:
 
@@ -221,6 +222,10 @@ Built as [project.md](project.md) ("Distribution") specifies: another project de
 
 Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tier with no Docker, and an opt-in `tests-e2e/` tier that builds, starts and stops each version's stack itself. CI ([ci.md](testing/ci.md)) runs both on GitHub's hosted `ubuntu-24.04` runners, with no self-hosted runner: a static gate, the fast tier, and a live matrix over 2.1 and 2.8 that fetches, builds and caches the images itself (never pushed), with a headless viewer and the render camera. Downstream repositories (naoqi-viewer, client libraries) pin a naoqi-sim commit for their own live jobs; naoqi-sim's CI does not test them.
 
+## Speech recognition
+
+Decided Nov 21, 2026, reversing the line that left it to the clients: `ALDialog` and the Speech Reco box are built on `ALSpeechRecognition`, and a sim that runs a NAO's dialogs must hear. naoqi-sim adds the module inside NAOqi on both versions, with a NAO's API, statuses and events (measured on a real NAO 2.1), the microphones' audio taken from its own `ALAudioDevice`, and an `asr` engine container that listens for the phrases a script or the dialog gives it ([speech-recognition.md](services/speech-recognition.md), [asr-engine.md](container/asr-engine.md)). Autonomous life starting the main dialog by itself (a person in zone 1) is the next step, with life's own pieces.
+
 ## Milestones
 
 The toolkit document numbers the milestones across the three packages; naoqi-sim's share is below, with the toolkit's number.
@@ -236,7 +241,8 @@ The toolkit document numbers the milestones across the three packages; naoqi-sim
 6. **Perception** (decided Oct 29, 2026): `ALFaceDetection` and `ALPeoplePerception` on the `perception` container, the dependents stubbed, tested with face props in the live tier ([Perception](#perception); plan [202610291800](../plans/202610291800_face-detection-and-people-perception.md)).
    - Exit: a face prop spawned in the robot's frame gives `FaceDetected` at the pinhole's angles and a person at its world position on both versions; awareness turns the head to it; the service lists match a normal boot's.
 
-Speech recognition is the clients'; naoqi-sim's part is the microphone of milestone 4.
+7. **Speech recognition** (decided Nov 21, 2026): `ALSpeechRecognition` on the `asr` container, for scripts and the dialog, on both versions ([Speech recognition](#speech-recognition); plan [202611211500](../plans/202611211500_speech-recognition.md)).
+   - Exit: a sentence spoken into the fake room gives `WordRecognized`, and a hand-loaded dialog topic answers it, on both versions.
 
 ## Open questions and risks
 

@@ -5,9 +5,9 @@ the environment's `NAOQI_SIM_VERSION` and `NAOQI_SIM_RECIPES`, the same ID for t
 Docker's cache), the containers and how the NAOqi one boots (`boot`: healthy, starting,
 unhealthy, exited) with the log it prints as it boots (`boot_log`: one more line each time
 `docker logs` reads it, the container `starting` until all are out), how the engines'
-containers turn out (`tts_health`, `perception_health`: healthy, unhealthy, exited), and whether Docker is up or a build fails.
+containers turn out (`tts_health`, `perception_health`, `asr_health`: healthy, unhealthy, exited), and whether Docker is up or a build fails.
 Every invocation is logged, and `up` records the `NAOQI_SIM_LANGUAGES` and
-`NAOQI_SIM_PERCEPTION_URL` it was given. A NAOqi build
+`NAOQI_SIM_PERCEPTION_URL` and `NAOQI_SIM_ASR_URL` it was given. A NAOqi build
 reads its `image-data` context as compose does, from `$NAOQI_SIM_IMAGE_DATA/<version>`: it records the
 folder, and fails as BuildKit does when the folder is not there.
 """
@@ -23,7 +23,7 @@ import pytest
 from ports import free_port
 
 from naoqi_sim import docker_images
-from naoqi_sim.docker_images import IMAGES, PERCEPTION_IMAGE, TTS_IMAGE
+from naoqi_sim.docker_images import ASR_IMAGE, IMAGES, PERCEPTION_IMAGE, TTS_IMAGE
 
 FAKE_DOCKER = textwrap.dedent(
     """\
@@ -81,9 +81,10 @@ FAKE_DOCKER = textwrap.dedent(
                 state = json.load(open(path))
             state["up_languages"] = os.environ.get("NAOQI_SIM_LANGUAGES")
             state["up_perception_url"] = os.environ.get("NAOQI_SIM_PERCEPTION_URL")
+            state["up_asr_url"] = os.environ.get("NAOQI_SIM_ASR_URL")
             for s in services:
                 name = state["services"][s]["container"]
-                if s in ("tts", "perception"):
+                if s in ("tts", "perception", "asr"):
                     state["containers"][name] = state.get(s + "_health", "healthy")
                 else:
                     state["containers"][name] = state["boot"]
@@ -142,6 +143,7 @@ class FakeDocker:
             "image": PERCEPTION_IMAGE,
             "container": docker_images.PERCEPTION_CONTAINER,
         }
+        services["asr"] = {"image": ASR_IMAGE, "container": docker_images.ASR_CONTAINER}
         self.write(
             {
                 "calls": [],

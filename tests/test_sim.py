@@ -24,6 +24,7 @@ from naoqi_sim.config import (
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
+    SpeechRecognitionSettings,
     SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
@@ -155,13 +156,15 @@ def test_start_runs_the_robot_and_stop_takes_it_down(env):
         assert env.checked == ["2.1"]
         [up] = [c for c in compose_calls(env) if " up " in c]
         assert "--profile 2.1" in up
-        assert up.endswith("up -d --no-build tts perception naoqi21")
+        assert up.endswith("up -d --no-build tts perception asr naoqi21")
         assert env.read()["up_languages"] == "German,English"
         assert env.read()["up_perception_url"] == "http://perception:8080"
+        assert env.read()["up_asr_url"] == "http://asr:8080"
         assert env.read()["containers"] == {
             "naoqi-sim-naoqi21": "healthy",
             "naoqi-sim-tts": "healthy",
             "naoqi-sim-perception": "healthy",
+            "naoqi-sim-asr": "healthy",
         }
         # The audio output is up: what the containers stream reaches the sink.
         play(sim.AUDIO_OUTPUT_PORT)
@@ -197,7 +200,7 @@ def test_async_with_runs_the_version_and_stops_it(env):
 
     asyncio.run(run())
     assert any(
-        c.endswith("up -d --no-build tts perception naoqi28")
+        c.endswith("up -d --no-build tts perception asr naoqi28")
         for c in compose_calls(env)
     )
 
@@ -452,7 +455,7 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
         "NAOqi 2.1 (sim): checking Docker, the images and the ports",
         "NAOqi 2.1 (sim): starting the audio output (MemorySink)",
         f"NAOqi 2.1 (sim): opening the host link on port {sim.HOST_LINK_PORT}",
-        "NAOqi 2.1 (sim): starting the containers (tts, perception, naoqi21)",
+        "NAOqi 2.1 (sim): starting the containers (tts, perception, asr, naoqi21)",
         "NAOqi 2.1 (sim): containers up, waiting for NAOqi to start (up to 240 s)",
         "NAOqi 2.1 (sim): NAOqi started",
         (
@@ -462,6 +465,8 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
         "NAOqi 2.1 (sim): speech engine ready",
         "NAOqi 2.1 (sim): waiting for the perception engine",
         "NAOqi 2.1 (sim): perception engine ready",
+        "NAOqi 2.1 (sim): waiting for the speech recognition engine",
+        "NAOqi 2.1 (sim): speech recognition engine ready",
         "NAOqi 2.1 (sim): starting naoqi-viewer (headless)",
         "NAOqi 2.1 (sim): starting the video input (top from render)",
         "NAOqi 2.1 (sim): starting the audio input (fake source)",
@@ -491,11 +496,12 @@ def test_without_the_perception_engine_its_container_is_neither_started_nor_awai
         asyncio.run(naoqisim.start())
     try:
         [up] = [c for c in compose_calls(env) if " up " in c]
-        assert up.endswith("up -d --no-build tts naoqi21")
+        assert up.endswith("up -d --no-build tts asr naoqi21")
         assert env.read()["up_perception_url"] == ""  # the modules reach no engine
         assert "naoqi-sim-perception" not in env.read()["containers"]
         assert (
-            "NAOqi 2.1 (sim): starting the containers (tts, naoqi21)" in caplog.messages
+            "NAOqi 2.1 (sim): starting the containers (tts, asr, naoqi21)"
+            in caplog.messages
         )
         assert not any("perception engine" in m for m in caplog.messages)
     finally:
@@ -506,6 +512,35 @@ def test_a_perception_engine_that_dies_fails_the_start(env):
     env.set(perception_health="exited")
     naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
     with pytest.raises(BootError, match="perception engine did not start"):
+        asyncio.run(naoqisim.start())
+    assert not naoqisim.running
+    assert env.read()["containers"] == {}
+
+
+def test_without_the_speech_recognition_engine_its_container_is_neither_started_nor_awaited(
+    env, caplog
+):
+    config = NaoqiSimConfig(
+        viewer=HEADLESS, speech_recognition=SpeechRecognitionSettings(enabled=False)
+    )
+    env.set(asr_health="exited")  # would fail the start if it were awaited
+    naoqisim = sim.NaoqiSim(config, sink=MemorySink())
+    with caplog.at_level(logging.INFO, logger="naoqi_sim"):
+        asyncio.run(naoqisim.start())
+    try:
+        [up] = [c for c in compose_calls(env) if " up " in c]
+        assert up.endswith("up -d --no-build tts perception naoqi21")
+        assert env.read()["up_asr_url"] == ""  # ALSpeechRecognition reaches no engine
+        assert "naoqi-sim-asr" not in env.read()["containers"]
+        assert not any("speech recognition engine" in m for m in caplog.messages)
+    finally:
+        asyncio.run(naoqisim.stop())
+
+
+def test_a_speech_recognition_engine_that_dies_fails_the_start(env):
+    env.set(asr_health="exited")
+    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    with pytest.raises(BootError, match="speech recognition engine did not start"):
         asyncio.run(naoqisim.start())
     assert not naoqisim.running
     assert env.read()["containers"] == {}

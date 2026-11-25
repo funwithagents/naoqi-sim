@@ -52,6 +52,7 @@ class NaoqiSimConfig:
     video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
     viewer: ViewerSettings = field(default_factory=ViewerSettings)
     perception: PerceptionSettings = field(default_factory=PerceptionSettings)
+    speech_recognition: SpeechRecognitionSettings = field(default_factory=SpeechRecognitionSettings)
 
 
 @dataclass
@@ -132,6 +133,14 @@ class PerceptionSettings:
 
     # False starts no `perception` container: the modules still answer and find nobody
     enabled: bool = True
+
+
+@dataclass
+class SpeechRecognitionSettings:
+    """The speech recognition engine (asr-engine.md): what ALSpeechRecognition hears."""
+
+    # False starts no `asr` container: ALSpeechRecognition still answers and hears nothing
+    enabled: bool = True
 ```
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
@@ -153,6 +162,10 @@ class PerceptionSettings:
 ### The perception engine
 
 `perception.enabled` (default `true`) runs the `perception` container with the stack, so `ALFaceDetection` and `ALPeoplePerception` detect for real on the frames the cameras serve ([perception-engine.md](../container/perception-engine.md), [face-detection.md](../services/face-detection.md), [people-perception.md](../services/people-perception.md)); `NaoqiSim.start()` waits for it as for the `tts` engine ([api.md](api.md), "Lifecycle"). `false` starts no container and the modules find nobody, as a NAO in the dark: for a machine that never shows the robot a face, or a client that runs its own detector and pauses the robot's. The modules and the stubs are always loaded: the service list is a NAO's either way. A NAO has no such switch, so it is not a device block ([devices.md](../host/devices.md)): it is the engine's.
+
+### The speech recognition engine
+
+`speech_recognition.enabled` (default `true`) runs the `asr` container with the stack, so `ALSpeechRecognition` recognises for real what the microphones hear ([asr-engine.md](../container/asr-engine.md), [speech-recognition.md](../services/speech-recognition.md)); `NaoqiSim.start()` waits for it after the perception engine. `false` starts no container and the module hears nothing, as a NAO in a silent room; `ALDialog` then answers `forceInput` only. The module is always loaded. Like the perception switch, it is the engine's, not a device block.
 
 ### The video input: one block per camera
 

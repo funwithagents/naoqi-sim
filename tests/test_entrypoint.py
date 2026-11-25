@@ -127,6 +127,8 @@ ADDED = {
         "_NaoqiSimAudioRelay",
         "_NaoqiSimTextToSpeech",
         "_NaoqiSimAudioPlayer",
+        "ALSpeechRecognition",
+        *(["_AsrCompiler1"] if v == "2.8" else []),
         "ALFaceDetection",
         *STUBS[v],
         *(["_NaoqiSimPerceptionSources"] if v == "2.8" else []),
@@ -153,10 +155,12 @@ SERVICES = " ".join(
 MODULES = {
     "2.1": "naoqi_sim_status_almodule naoqi_sim_speech_almodule "
     "naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule "
+    "naoqi_sim_speech_recognition_almodule "
     "naoqi_sim_face_detection_almodule naoqi_sim_people_perception_almodule "
     "naoqi_sim_perception_stubs_almodule",
     "2.8": "naoqi_sim_status_qiservice naoqi_sim_speech_qiservice "
     "naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice "
+    "naoqi_sim_speech_recognition_qiservice "
     "naoqi_sim_face_detection_qiservice naoqi_sim_people_perception_qiservice "
     "naoqi_sim_perception_stubs_qiservice",
 }
@@ -422,6 +426,7 @@ def test_says_what_it_is_still_waiting_for(fakes):
         ("_NaoqiSimAudioRelay", "added"),  # the relay registered nothing
         ("ALPeoplePerception", "replaced"),
         ("ALFaceDetection", "added"),
+        ("ALSpeechRecognition", "added"),
         ("ALEngagementZones", "added"),  # a stub
     ],
 )

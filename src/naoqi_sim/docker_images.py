@@ -1,9 +1,9 @@
 """The Docker images a simulated NAO runs on: fetched, built and verified once, checked at every start.
 
 `fetch_and_build_images` does everything slow or downloaded, per NAOqi version: it fetches the
-image data (`suite.fetch`), builds the version's NAOqi image, the `tts` image and the
-`perception` image with the installed naoqi-sim version and the digest of the `docker/` recipes
-as labels, then boots them until the NAOqi container is healthy and the two engines answer, and
+image data (`suite.fetch`), builds the version's NAOqi image and the engines' images (`tts`,
+`perception`, `asr`) with the installed naoqi-sim version and the digest of the `docker/` recipes
+as labels, then boots them until the NAOqi container is healthy and the engines answer, and
 takes them down. Only the image IDs that booted are
 recorded, in `images.json` next to the image data.
 
@@ -53,12 +53,16 @@ TTS_CONTAINER = "naoqi-sim-tts"
 PERCEPTION_IMAGE = "naoqi-sim/perception:dev"
 PERCEPTION_CONTAINER = "naoqi-sim-perception"
 PERCEPTION_URL = "http://perception:8080"  # where the NAOqi services reach the engine
+ASR_IMAGE = "naoqi-sim/asr:dev"
+ASR_CONTAINER = "naoqi-sim-asr"
+ASR_URL = "http://asr:8080"  # where ALSpeechRecognition reaches the engine
 NAOQI_PORT = 9559
 READY_TIMEOUT = 240.0  # seconds for the NAOqi container to turn healthy
 TTS_TIMEOUT = (
     60.0  # seconds for the tts engine to load its voices once NAOqi is healthy
 )
 PERCEPTION_TIMEOUT = 60.0  # seconds for the perception engine to load its model
+ASR_TIMEOUT = 60.0  # seconds for the speech recognition engine to load its models
 POLL = 1.0
 
 
@@ -78,7 +82,7 @@ class Images:
     @property
     def tags(self) -> tuple[str, ...]:
         """Every image a start of this version needs, the engines' included."""
-        return (self.image, TTS_IMAGE, PERCEPTION_IMAGE)
+        return (self.image, TTS_IMAGE, PERCEPTION_IMAGE, ASR_IMAGE)
 
 
 IMAGES = {
@@ -179,9 +183,9 @@ def _record(image_data: Path, verified: dict[str, str]) -> None:
 
 
 def check_images(version: str, image_data: Path = IMAGE_DATA) -> None:
-    """Raise unless the version's NAOqi image, the tts image and the perception image are built
-    by this naoqi-sim version, from the recipes as they are now, and verified (the perception
-    image whether or not a config runs the engine). Needs Docker; downloads and builds nothing."""
+    """Raise unless the version's NAOqi image and the engines' images (tts, perception, asr) are
+    built by this naoqi-sim version, from the recipes as they are now, and verified (an engine's
+    image whether or not a config runs it). Needs Docker; downloads and builds nothing."""
     images = IMAGES[version]
     want = naoqi_sim_version()
     recipes = recipes_digest()
@@ -375,19 +379,39 @@ def wait_perception(
     )
 
 
+def wait_asr(
+    images: Images,
+    timeout: float | None = None,
+    abort: threading.Event | None = None,
+) -> None:
+    """Until the speech recognition engine's container is healthy: its models loaded
+    (asr-engine.md, "Image and process"). `BootError` as `wait_tts`, default `ASR_TIMEOUT`."""
+    timeout = ASR_TIMEOUT if timeout is None else timeout
+    log.info("%s: waiting for the speech recognition engine", label(images.version))
+    _engine_wait(
+        "speech recognition",
+        ASR_CONTAINER,
+        timeout,
+        abort,
+        f"{label(images.version)}: speech recognition engine ready",
+    )
+
+
 def _build(images: Images, env: dict[str, str]) -> None:
     log.info(
-        "%s: building %s, %s and %s",
+        "%s: building %s, %s, %s and %s",
         label(images.version),
         images.image,
         TTS_IMAGE,
         PERCEPTION_IMAGE,
+        ASR_IMAGE,
     )
     res = run(
         *images.compose(),
         "build",
         "tts",
         "perception",
+        "asr",
         images.service,
         timeout=3600,
         env=env,
@@ -404,7 +428,14 @@ def _verify(images: Images, env: dict[str, str]) -> None:
     require_free(NAOQI_PORT)
     try:
         res = run(
-            *images.compose(), "up", "-d", "tts", "perception", images.service, env=env
+            *images.compose(),
+            "up",
+            "-d",
+            "tts",
+            "perception",
+            "asr",
+            images.service,
+            env=env,
         )
         if res.returncode != 0:
             raise BootError(
@@ -413,6 +444,7 @@ def _verify(images: Images, env: dict[str, str]) -> None:
         wait_healthy(images)
         wait_tts(images, SpeechSettings().languages)  # the image has their voices
         wait_perception(images)
+        wait_asr(images)
     finally:
         run(*images.compose(), "down", timeout=300, env=env)
 
