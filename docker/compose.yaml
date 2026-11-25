@@ -86,7 +86,7 @@ services:
       NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}
       # The robot's state when the sim is ready (the config's robot block; autonomous-life.md).
       NAOQI_SIM_ROBOT_POSTURE: ${NAOQI_SIM_ROBOT_POSTURE:-crouch}
-      NAOQI_SIM_ROBOT_MOTORS: ${NAOQI_SIM_ROBOT_MOTORS:-off}
+      NAOQI_SIM_ROBOT_STIFFNESS: ${NAOQI_SIM_ROBOT_STIFFNESS:-off}
       NAOQI_SIM_ROBOT_LIFE: ${NAOQI_SIM_ROBOT_LIFE:-off}
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
       NAOQI_SIM_HOST_LINK: host.docker.internal:9563
@@ -130,7 +130,7 @@ services:
       NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}
       # The robot's state when the sim is ready (the config's robot block; autonomous-life.md).
       NAOQI_SIM_ROBOT_POSTURE: ${NAOQI_SIM_ROBOT_POSTURE:-crouch}
-      NAOQI_SIM_ROBOT_MOTORS: ${NAOQI_SIM_ROBOT_MOTORS:-off}
+      NAOQI_SIM_ROBOT_STIFFNESS: ${NAOQI_SIM_ROBOT_STIFFNESS:-off}
       NAOQI_SIM_ROBOT_LIFE: ${NAOQI_SIM_ROBOT_LIFE:-off}
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
       NAOQI_SIM_HOST_LINK: host.docker.internal:9563

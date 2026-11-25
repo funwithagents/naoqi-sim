@@ -186,26 +186,33 @@ move() {
 
 # robot_state: the robot as the config's robot block asks when the sim is ready
 # (specs/container/autonomous-life.md, "The state at boot"): Life first, since switching it on
-# stands the robot up, then the posture, then the motors. The config has refused the combinations
-# a NAO cannot be in.
+# stands the robot up, then the posture, then the stiffness. The config has refused the
+# combinations a NAO cannot be in.
 robot_state() {
-  local posture=${NAOQI_SIM_ROBOT_POSTURE:-crouch} motors=${NAOQI_SIM_ROBOT_MOTORS:-off}
+  local posture=${NAOQI_SIM_ROBOT_POSTURE:-crouch} stiffness=${NAOQI_SIM_ROBOT_STIFFNESS:-off}
   local life=${NAOQI_SIM_ROBOT_LIFE:-off} out
   [[ $life == on ]] && move ALAutonomousLife.setState solitary
   case $posture in
-    crouch) move ALMotion.rest ;;
+    crouch)
+      if [[ $stiffness == on ]]; then
+        move ALMotion.wakeUp
+        move ALRobotPosture.goToPosture '"Crouch"' 0.8 --json
+      else
+        move ALMotion.rest
+      fi
+      ;;
     stand) [[ $life == on ]] || move ALMotion.wakeUp ;;
     sit)
       [[ $life == on ]] || move ALMotion.wakeUp
       move ALRobotPosture.goToPosture '"Sit"' 0.8 --json
       out=$(call ALRobotPosture.getPosture 2>&1)
       [[ $out == *Sit* ]] || fail "the robot did not sit: ALRobotPosture.getPosture answered $out"
-      # Motors off where it sits: rest() would crouch it.
-      [[ $motors == on ]] || move ALMotion.setStiffnesses '"Body"' 0.0 --json
+      # Stiffness off where it sits: rest() would crouch it.
+      [[ $stiffness == on ]] || move ALMotion.setStiffnesses '"Body"' 0.0 --json
       ;;
     *) fail "unknown posture $posture" ;;
   esac
-  log "robot: $posture, motors $motors, life $life"
+  log "robot: $posture, stiffness $stiffness, life $life"
 }
 
 # mark_ready: the whole sequence succeeded. Then wait on naoqi-bin (signals are forwarded to it).

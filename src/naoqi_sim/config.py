@@ -228,23 +228,26 @@ class NaoqiSettings(_Loaders):
 @dataclass(frozen=True)
 class RobotSettings(_Loaders):
     """The robot's state when the sim is ready (specs/container/autonomous-life.md, "The state at
-    boot"): its posture, whether its motors are on, whether Autonomous Life runs (`solitary`).
-    The default is a NAO whose Life does not start at boot, at rest."""
+    boot"): its posture, whether its stiffness is on (all joints, as after `wakeUp()`) or off (as
+    after `rest()`), whether Autonomous Life runs (`solitary`). The default is a NAO whose Life
+    does not start at boot, at rest."""
 
     posture: RobotPosture = "crouch"
-    motors: bool = False
-    life: bool = False
+    stiffness_on: bool = False
+    life_on: bool = False
 
     def __post_init__(self) -> None:
         _check_choice(self.posture, RobotPosture, "posture")
-        if self.posture == "stand" and not self.motors:
+        if self.posture == "stand" and not self.stiffness_on:
             raise ConfigError(
-                "a NAO cannot stand with its motors off: 'crouch' is that state",
-                key="motors",
+                "a NAO cannot stand with its stiffness off: 'crouch' is that state",
+                key="stiffness_on",
             )
-        if self.life and not self.motors:
-            raise ConfigError("Autonomous Life needs the motors on", key="motors")
-        if self.life and self.posture == "crouch":
+        if self.life_on and not self.stiffness_on:
+            raise ConfigError(
+                "Autonomous Life needs the stiffness on", key="stiffness_on"
+            )
+        if self.life_on and self.posture == "crouch":
             raise ConfigError(
                 "Autonomous Life stands the robot up: 'stand' or 'sit'", key="posture"
             )
@@ -255,7 +258,7 @@ class RobotSettings(_Loaders):
             cls,
             data,
             path,
-            {"posture": _as_str, "motors": _as_bool, "life": _as_bool},
+            {"posture": _as_str, "stiffness_on": _as_bool, "life_on": _as_bool},
         )
 
 

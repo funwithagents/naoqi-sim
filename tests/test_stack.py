@@ -133,15 +133,17 @@ def test_the_robot_block_reaches_the_entrypoint():
     default = stack.compose_env(NaoqiSimConfig())
     assert (
         default["NAOQI_SIM_ROBOT_POSTURE"],
-        default["NAOQI_SIM_ROBOT_MOTORS"],
+        default["NAOQI_SIM_ROBOT_STIFFNESS"],
         default["NAOQI_SIM_ROBOT_LIFE"],
     ) == ("crouch", "off", "off")
     life = stack.compose_env(
-        NaoqiSimConfig(robot=RobotSettings(posture="stand", motors=True, life=True))
+        NaoqiSimConfig(
+            robot=RobotSettings(posture="stand", stiffness_on=True, life_on=True)
+        )
     )
     assert (
         life["NAOQI_SIM_ROBOT_POSTURE"],
-        life["NAOQI_SIM_ROBOT_MOTORS"],
+        life["NAOQI_SIM_ROBOT_STIFFNESS"],
         life["NAOQI_SIM_ROBOT_LIFE"],
     ) == ("stand", "on", "on")
 

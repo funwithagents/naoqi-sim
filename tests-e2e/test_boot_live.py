@@ -3,8 +3,8 @@ that does not boot fails this test, with the boot's error, and the version's oth
 
 
 def test_the_robot_boots(nao):
-    """Booted, and as a NAO whose Life does not start at boot: Life disabled, crouched, the motors
-    off (autonomous-life.md, "The sim boots with Life off, at rest"). This test runs on the fresh
+    """Booted, and as a NAO whose Life does not start at boot: Life disabled, crouched, the stiffness
+    off (autonomous-life.md, "The state at boot": the default). This test runs on the fresh
     boot, before any other test moves the robot."""
     assert nao.running
     assert nao.service("NaoqiSim").isReady()

@@ -36,7 +36,9 @@ def test_an_empty_config_is_the_defaults():
     assert config.naoqi.version == "2.1" and config.naoqi.ready_timeout_s == 240.0
     assert config.speech.languages == ("English", "French")
     # a NAO whose Life does not start at boot, at rest
-    assert config.robot == RobotSettings(posture="crouch", motors=False, life=False)
+    assert config.robot == RobotSettings(
+        posture="crouch", stiffness_on=False, life_on=False
+    )
     assert config.audio_output.mode == "play"
     assert config.audio_input.source == "none"
     assert config.video_input == VideoInputSettings(
@@ -242,7 +244,7 @@ def test_the_example_files_load():
     assert languages.speech.languages == ("English", "French", "German")
     life = NaoqiSimConfig.from_json_file(EXAMPLES / "life.json")
     assert life == NaoqiSimConfig(
-        robot=RobotSettings(posture="stand", motors=True, life=True)
+        robot=RobotSettings(posture="stand", stiffness_on=True, life_on=True)
     )
     mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
     assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))
@@ -297,11 +299,12 @@ def test_the_perception_engine_is_on_unless_the_config_turns_it_off():
     "robot",
     [
         {},
-        {"posture": "stand", "motors": True},
-        {"posture": "stand", "motors": True, "life": True},
+        {"stiffness_on": True},
+        {"posture": "stand", "stiffness_on": True},
+        {"posture": "stand", "stiffness_on": True, "life_on": True},
         {"posture": "sit"},
-        {"posture": "sit", "motors": True},
-        {"posture": "sit", "motors": True, "life": True},
+        {"posture": "sit", "stiffness_on": True},
+        {"posture": "sit", "stiffness_on": True, "life_on": True},
     ],
 )
 def test_the_robot_states_a_nao_can_be_in(robot):
@@ -312,9 +315,21 @@ def test_the_robot_states_a_nao_can_be_in(robot):
 @pytest.mark.parametrize(
     ("robot", "key", "why"),
     [
-        ({"posture": "stand"}, "robot.motors", "cannot stand with its motors off"),
-        ({"posture": "sit", "life": True}, "robot.motors", "Life needs the motors on"),
-        ({"motors": True, "life": True}, "robot.posture", "stands the robot up"),
+        (
+            {"posture": "stand"},
+            "robot.stiffness_on",
+            "cannot stand with its stiffness off",
+        ),
+        (
+            {"posture": "sit", "life_on": True},
+            "robot.stiffness_on",
+            "Life needs the stiffness on",
+        ),
+        (
+            {"stiffness_on": True, "life_on": True},
+            "robot.posture",
+            "stands the robot up",
+        ),
         ({"posture": "lying"}, "robot.posture", "must be one of"),
     ],
 )

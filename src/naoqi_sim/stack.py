@@ -86,8 +86,8 @@ def compose_env(config: NaoqiSimConfig) -> dict[str, str]:
         "NAOQI_SIM_LANGUAGES": ",".join(config.speech.languages),
         # The robot's state when the sim is ready, which the NAOqi entrypoint brings it to.
         "NAOQI_SIM_ROBOT_POSTURE": config.robot.posture,
-        "NAOQI_SIM_ROBOT_MOTORS": "on" if config.robot.motors else "off",
-        "NAOQI_SIM_ROBOT_LIFE": "on" if config.robot.life else "off",
+        "NAOQI_SIM_ROBOT_STIFFNESS": "on" if config.robot.stiffness_on else "off",
+        "NAOQI_SIM_ROBOT_LIFE": "on" if config.robot.life_on else "off",
         "NAOQI_SIM_PERCEPTION_URL": docker_images.PERCEPTION_URL
         if config.perception.enabled
         else "",

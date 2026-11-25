@@ -183,10 +183,14 @@ VISION_2D = {
 CHOSEN = ["ALTextToSpeech", "ALSpeechRecognition", "ALDialog"]
 
 
-# The calls that bring the robot to the config's state, by (posture, motors, life).
+# The calls that bring the robot to the config's state, by (posture, stiffness, life).
 SIT = 'ALRobotPosture.goToPosture "Sit" 0.8 --json'
 ROBOT_STATE = {
     ("crouch", "off", "off"): ["ALMotion.rest"],
+    ("crouch", "on", "off"): [
+        "ALMotion.wakeUp",
+        'ALRobotPosture.goToPosture "Crouch" 0.8 --json',
+    ],
     ("stand", "on", "off"): ["ALMotion.wakeUp"],
     ("stand", "on", "on"): ["ALAutonomousLife.setState solitary"],
     ("sit", "off", "off"): [
@@ -205,10 +209,10 @@ ROBOT_STATE = {
 
 
 def robot_env(state: tuple[str, str, str]) -> dict[str, str]:
-    posture, motors, life = state
+    posture, stiffness, life = state
     return {
         "NAOQI_SIM_ROBOT_POSTURE": posture,
-        "NAOQI_SIM_ROBOT_MOTORS": motors,
+        "NAOQI_SIM_ROBOT_STIFFNESS": stiffness,
         "NAOQI_SIM_ROBOT_LIFE": life,
     }
 
@@ -231,7 +235,7 @@ def expected_calls(
         if version == "2.8"
         else []
     )
-    # 2.1's desktop life accepts setState only once allowed; both rest, crouched with motors off.
+    # 2.1's desktop life accepts setState only once allowed; both rest, crouched with the stiffness off.
     life = (
         [f"call ALAutonomousLife._setStateChangeEnabled true --hidden --json {url}"]
         if version == "2.1"
@@ -414,14 +418,14 @@ def test_the_rest_may_take_longer_than_an_answer(fakes, version):
 @pytest.mark.parametrize("state", list(ROBOT_STATE))
 @pytest.mark.parametrize("version", ["2.1", "2.8"])
 def test_the_robot_is_brought_to_the_configs_state(fakes, version, state):
-    """Life first (it stands the robot up), then the posture, then the motors; the robot block's
+    """Life first (it stands the robot up), then the posture, then the stiffness; the robot block's
     state is logged, then the sim is ready."""
     ep = Entrypoint(fakes, version, robot_env(state))
     ep.wait_for_ready()
     ep.stop()
     assert calls_only(fakes) == expected_calls(version, state=state)
-    posture, motors, life = state
-    assert f"robot: {posture}, motors {motors}, life {life}" in ep.output()
+    posture, stiffness, life = state
+    assert f"robot: {posture}, stiffness {stiffness}, life {life}" in ep.output()
 
 
 def test_a_robot_that_did_not_sit_fails_the_boot(fakes):

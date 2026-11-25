@@ -11,10 +11,15 @@ from naoqi_sim.config import RobotSettings
 
 STATES = {
     "2.1": [
-        RobotSettings(posture="sit"),  # sitting, motors off: rest() would crouch it
-        RobotSettings(posture="sit", motors=True, life=True),  # sitting, Life on
+        RobotSettings(posture="sit"),  # sitting, stiffness off: rest() would crouch it
+        RobotSettings(
+            posture="sit", stiffness_on=True, life_on=True
+        ),  # sitting, Life on
     ],
-    "2.8": [RobotSettings(posture="stand", motors=True, life=True)],  # 2.8 cannot sit
+    "2.8": [  # 2.8 cannot sit
+        RobotSettings(posture="stand", stiffness_on=True, life_on=True),
+        RobotSettings(stiffness_on=True),  # crouched, stiff
+    ],
 }
 
 
@@ -32,10 +37,10 @@ def test_the_sim_is_ready_in_the_configs_state(nao, index):
         motion = session.service("ALMotion")
         posture = session.service("ALRobotPosture")
         life = session.service("ALAutonomousLife")
-        assert posture.getPosture() == {"sit": "Sit", "stand": "Stand"}[robot.posture]
-        assert life.getState() == ("solitary" if robot.life else "disabled")
+        assert posture.getPosture() == robot.posture.capitalize()
+        assert life.getState() == ("solitary" if robot.life_on else "disabled")
         stiffness = max(motion.getStiffnesses("Body"))
-        assert stiffness > 0.9 if robot.motors else stiffness < 0.1
+        assert stiffness > 0.9 if robot.stiffness_on else stiffness < 0.1
         session.close()
     finally:
         nao.runner.run(sim.stop())

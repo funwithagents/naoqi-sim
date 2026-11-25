@@ -34,20 +34,21 @@ This spec says what naoqi-sim's images provide so that **Life and its main dialo
 
 ### The state at boot
 
-The config's `robot` block ([config.md](../runtime/config.md)) says what state the robot is in when the sim is ready: its posture, whether its motors are on, whether Life runs (user, Nov 25, 2026). Only the states a NAO can be in are accepted:
+The config's `robot` block ([config.md](../runtime/config.md)) says what state the robot is in when the sim is ready: its posture, whether its stiffness is on (all joints, as after `wakeUp()`) or off (as after `rest()`), whether Life runs (user, Nov 25, 2026; the fields `posture`, `stiffness_on`, `life_on`). Only the states a NAO can be in are accepted:
 
-| `posture` | `motors` | `life` | When ready | Versions |
+| `posture` | `stiffness_on` | `life_on` | When ready | Versions |
 |---|---|---|---|---|
-| `crouch` | off | off | **The default**, below | both |
-| `stand` | on | off | Standing, as after `wakeUp()` | both |
-| `stand` | on | on | Life `solitary`, standing | both |
-| `sit` | off | off | Sitting, the motors off | 2.1 |
-| `sit` | on | off | Sitting, stiff | 2.1 |
-| `sit` | on | on | Life `solitary`, sitting | 2.1 |
+| `crouch` | false | false | **The default**, below | both |
+| `crouch` | true | false | Crouched, stiff | both |
+| `stand` | true | false | Standing, as after `wakeUp()` | both |
+| `stand` | true | true | Life `solitary`, standing | both |
+| `sit` | false | false | Sitting, the stiffness off | 2.1 |
+| `sit` | true | false | Sitting, stiff | 2.1 |
+| `sit` | true | true | Life `solitary`, sitting | 2.1 |
 
-- **Refused at load**, with a `ConfigError` saying why: `stand` with the motors off (a NAO cannot stand without its motors: that state is `crouch`), Life with the motors off (Life needs them), Life in `crouch` (Life stands the robot up), and `sit` on 2.8.
+- **Refused at load**, with a `ConfigError` saying why: `stand` with the stiffness off (a NAO cannot stand without it: that state is `crouch`), Life with the stiffness off (Life needs it), Life in `crouch` (Life stands the robot up), and `sit` on 2.8.
 - **`sit` is 2.1 only.** The 2.8 desktop suite has no inertial sensor ([naoqi-fidelity.md](naoqi-fidelity.md), "cannot reliably reach Sit"): measured Nov 25, 2026, `goToPosture("Sit")` from Crouch took 30 s and returned False, and under Life it left the robot standing. On 2.1 it works with or without Life (measured: `True` in 15.5 s from Crouch, in 11.7 s under Life, which then keeps the robot sitting).
-- **The entrypoint brings the robot there** after the languages (2.8), in this order: Life first, since `setState("solitary")` stands the robot up (measured from Crouch and from Sit at rest, both versions); then the posture: `rest()` for `crouch`, `wakeUp()` for `stand` (when Life has not already stood it), `wakeUp()` and `goToPosture("Sit", 0.8)` for `sit`, the posture checked afterwards (`getPosture()` is `Sit`, or the boot fails); then, for `sit` with the motors off, `setStiffnesses("Body", 0)`: `rest()` from Sit crouches the simulated robot (measured on both). Each of these moves may take up to 60 s ([container.md](container.md), "Entrypoint").
+- **The entrypoint brings the robot there** after the languages (2.8), in this order: Life first, since `setState("solitary")` stands the robot up (measured from Crouch and from Sit at rest, both versions); then the posture: `rest()` for `crouch`, or `wakeUp()` and `goToPosture("Crouch", 0.8)` for a stiff crouch, `wakeUp()` for `stand` (when Life has not already stood it), `wakeUp()` and `goToPosture("Sit", 0.8)` for `sit`, the posture checked afterwards (`getPosture()` is `Sit`, or the boot fails); then, for `sit` with the stiffness off, `setStiffnesses("Body", 0)`: `rest()` from Sit crouches the simulated robot (measured on both). Each of these moves may take up to 60 s ([container.md](container.md), "Entrypoint").
 - **Life on at boot** is switched on by `setState("solitary")` after the languages, not by the robot's Life-at-boot preference, which stays off: Life would preload the 2.8 dialog before its languages are chosen, and it would have no grammar ([speech-recognition.md](../services/speech-recognition.md), "What it listens for").
 
 #### The default: Life off, at rest
@@ -58,14 +59,14 @@ On both versions, with the default `robot` block:
 |---|---|
 | `ALAutonomousLife.getState()` | `disabled` |
 | `ALMotion.robotIsWakeUp()` | false |
-| Posture | `Crouch`, the motors off (stiffness 0) |
+| Posture | `Crouch`, the stiffness off (0) |
 
 - This is a NAO whose Life-at-boot switch is off (the preference `com.aldebaran.debug` / `DisableLifeAndDialog` at `"1"`), found at rest in Crouch each time we connected to one.
 - A client that wants the robot standing calls `ALMotion.wakeUp()`, and one that wants Life calls `ALAutonomousLife.setState("solitary")`, which stands the robot itself. A script that forgets `wakeUp()` now sees a crouched robot.
 - **2.1**: the desktop suite boots standing and stiff with Life `disabled`. The entrypoint calls `ALMotion.rest()` before the sim is declared ready (measured: Crouch, stiffness 0, in 5.3 s).
 - **2.8**: the desktop suite starts Life in `solitary`, which wakes the robot. Life reads the robot's switch itself when it starts: with the preference at `"1"` it stays `disabled` (measured on the sim), and a client's `setState("solitary")` still works. A module of ours, `naoqi_sim_life_qiservice`, loaded with our other modules before the package services start, sets the preference (`ALPreferenceManager.setValue`). The entrypoint then calls `ALMotion.rest()` as on 2.1, since the simulated robot is standing and stiff when Life does not start (measured; `rest()` takes 5.1 s).
 - **The dialog is not preloaded at boot** when Life is off, on a robot (its boot package preloads it only when Life is on) as on the sim (measured). It is preloaded when Life is switched on, or at `_runMain()`. On 2.8 the entrypoint chooses the robot's languages before that, which is what makes the dialog write its grammar ([speech-recognition.md](../services/speech-recognition.md), "What it listens for").
-- **Measured from this state**, both versions: `setState("solitary")` stands the robot (3.8 s on 2.1, as on a real NAO; 4.5 s on 2.8), `setState("disabled")` brings it back to Crouch with the motors off (5.3 s).
+- **Measured from this state**, both versions: `setState("solitary")` stands the robot (3.8 s on 2.1, as on a real NAO; 4.5 s on 2.8), `setState("disabled")` brings it back to Crouch with the stiffness off (5.3 s).
 - **A joint command moves a joint at stiffness 0** on both sims, where a real NAO's motor does not move (measured: `angleInterpolation` and `setAngles` on the head at rest). So a script that forgets `wakeUp()` shows a crouched robot, and still works. Recorded in [naoqi-fidelity.md](naoqi-fidelity.md) as a limitation.
 
 ### Switching Life on
