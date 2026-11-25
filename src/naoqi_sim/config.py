@@ -20,6 +20,7 @@ AudioInputSource = Literal["none", "mic", "fake"]
 MonoPolicy = Literal["duplicate", "silence"]
 VideoInputSource = Literal["none", "render", "webcam"]
 ViewerVariant = Literal["auto", "placeholder", "aldebaran"]
+RobotPosture = Literal["crouch", "stand", "sit"]
 
 MAX_FPS = 30  # a NAO camera's highest frame rate
 
@@ -221,6 +222,40 @@ class NaoqiSettings(_Loaders):
     def parse(cls, data: Any, path: str) -> Self:
         return _parse_block(
             cls, data, path, {"version": _as_str, "ready_timeout_s": _as_number}
+        )
+
+
+@dataclass(frozen=True)
+class RobotSettings(_Loaders):
+    """The robot's state when the sim is ready (specs/container/autonomous-life.md, "The state at
+    boot"): its posture, whether its motors are on, whether Autonomous Life runs (`solitary`).
+    The default is a NAO whose Life does not start at boot, at rest."""
+
+    posture: RobotPosture = "crouch"
+    motors: bool = False
+    life: bool = False
+
+    def __post_init__(self) -> None:
+        _check_choice(self.posture, RobotPosture, "posture")
+        if self.posture == "stand" and not self.motors:
+            raise ConfigError(
+                "a NAO cannot stand with its motors off: 'crouch' is that state",
+                key="motors",
+            )
+        if self.life and not self.motors:
+            raise ConfigError("Autonomous Life needs the motors on", key="motors")
+        if self.life and self.posture == "crouch":
+            raise ConfigError(
+                "Autonomous Life stands the robot up: 'stand' or 'sit'", key="posture"
+            )
+
+    @classmethod
+    def parse(cls, data: Any, path: str) -> Self:
+        return _parse_block(
+            cls,
+            data,
+            path,
+            {"posture": _as_str, "motors": _as_bool, "life": _as_bool},
         )
 
 
@@ -440,6 +475,7 @@ class NaoqiSimConfig(_Loaders):
     """A simulated NAO: its NAOqi, its engines, its host devices and its viewer."""
 
     naoqi: NaoqiSettings = field(default_factory=NaoqiSettings)
+    robot: RobotSettings = field(default_factory=RobotSettings)
     speech: SpeechSettings = field(default_factory=SpeechSettings)
     audio_output: AudioOutputSettings = field(default_factory=AudioOutputSettings)
     audio_input: AudioInputSettings = field(default_factory=AudioInputSettings)
@@ -450,6 +486,14 @@ class NaoqiSimConfig(_Loaders):
         default_factory=SpeechRecognitionSettings
     )
 
+    def __post_init__(self) -> None:
+        if self.robot.posture == "sit" and self.naoqi.version == "2.8":
+            raise ConfigError(
+                "the 2.8 sim cannot reliably sit (naoqi-fidelity.md: its desktop suite has no "
+                "inertial sensor); 'sit' is for 2.1",
+                key="robot.posture",
+            )
+
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
         return _parse_block(
@@ -458,6 +502,7 @@ class NaoqiSimConfig(_Loaders):
             path,
             {
                 "naoqi": lambda d: NaoqiSettings.parse(d, "naoqi"),
+                "robot": lambda d: RobotSettings.parse(d, "robot"),
                 "speech": lambda d: SpeechSettings.parse(d, "speech"),
                 "audio_output": lambda d: AudioOutputSettings.parse(d, "audio_output"),
                 "audio_input": lambda d: AudioInputSettings.parse(d, "audio_input"),

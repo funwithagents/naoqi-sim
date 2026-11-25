@@ -35,5 +35,5 @@ check_answer added $ADDED
 check_answer "kept built-in" $KEPT
 vision_2d _ALFastPersonTracking _ALFindPersonHead ALMovementDetection
 choose_languages
-rest
+robot_state
 mark_ready

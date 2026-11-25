@@ -58,6 +58,8 @@ FAKE_QICLI = textwrap.dedent(
     target = args[1]
     if target.split(".")[0] in down:  # a call on a service that did not load
         sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
+    if target == "ALRobotPosture.getPosture":
+        print(os.environ.get("FAKE_QICLI_POSTURE", "Sit"))
     if target == "ALMotion.rest":  # a move, slower than an answer
         import time
         time.sleep(float(os.environ.get("FAKE_QICLI_REST_SECONDS", "0")))
@@ -181,8 +183,40 @@ VISION_2D = {
 CHOSEN = ["ALTextToSpeech", "ALSpeechRecognition", "ALDialog"]
 
 
+# The calls that bring the robot to the config's state, by (posture, motors, life).
+SIT = 'ALRobotPosture.goToPosture "Sit" 0.8 --json'
+ROBOT_STATE = {
+    ("crouch", "off", "off"): ["ALMotion.rest"],
+    ("stand", "on", "off"): ["ALMotion.wakeUp"],
+    ("stand", "on", "on"): ["ALAutonomousLife.setState solitary"],
+    ("sit", "off", "off"): [
+        "ALMotion.wakeUp",
+        SIT,
+        "ALRobotPosture.getPosture",
+        'ALMotion.setStiffnesses "Body" 0.0 --json',
+    ],
+    ("sit", "on", "off"): ["ALMotion.wakeUp", SIT, "ALRobotPosture.getPosture"],
+    ("sit", "on", "on"): [
+        "ALAutonomousLife.setState solitary",
+        SIT,
+        "ALRobotPosture.getPosture",
+    ],
+}
+
+
+def robot_env(state: tuple[str, str, str]) -> dict[str, str]:
+    posture, motors, life = state
+    return {
+        "NAOQI_SIM_ROBOT_POSTURE": posture,
+        "NAOQI_SIM_ROBOT_MOTORS": motors,
+        "NAOQI_SIM_ROBOT_LIFE": life,
+    }
+
+
 def expected_calls(
-    version: str, languages: tuple[str, ...] = ("English",)
+    version: str,
+    languages: tuple[str, ...] = ("English",),
+    state: tuple[str, str, str] = ("crouch", "off", "off"),
 ) -> list[str]:
     url = URLS[version]
     chosen = (
@@ -207,7 +241,8 @@ def expected_calls(
         [f"call {m}._setDetectionMode 2D {url}" for m in VISION_2D[version]]
         + chosen
         + life
-        + [f"call ALMotion.rest {url}", f"call NaoqiSim.setReady {url}"]
+        + [f"call {c} {url}" for c in ROBOT_STATE[state]]
+        + [f"call NaoqiSim.setReady {url}"]
     )
 
 
@@ -374,6 +409,29 @@ def test_the_rest_may_take_longer_than_an_answer(fakes, version):
     ep.wait_for_ready()
     ep.stop()
     assert calls_only(fakes) == expected_calls(version)
+
+
+@pytest.mark.parametrize("state", list(ROBOT_STATE))
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+def test_the_robot_is_brought_to_the_configs_state(fakes, version, state):
+    """Life first (it stands the robot up), then the posture, then the motors; the robot block's
+    state is logged, then the sim is ready."""
+    ep = Entrypoint(fakes, version, robot_env(state))
+    ep.wait_for_ready()
+    ep.stop()
+    assert calls_only(fakes) == expected_calls(version, state=state)
+    posture, motors, life = state
+    assert f"robot: {posture}, motors {motors}, life {life}" in ep.output()
+
+
+def test_a_robot_that_did_not_sit_fails_the_boot(fakes):
+    ep = Entrypoint(
+        fakes,
+        "2.1",
+        {**robot_env(("sit", "on", "off")), "FAKE_QICLI_POSTURE": "Crouch"},
+    )
+    assert ep.wait_exit() == 1
+    assert "the robot did not sit" in ep.output()
 
 
 def test_sequence_on_2_8(fakes):

@@ -9,6 +9,7 @@ code:
   - examples/configs/mic.json
   - examples/configs/webcam.json
   - examples/configs/languages.json
+  - examples/configs/life.json
 tests:
   - tests/test_config.py
   - tests/test_project_map.py
@@ -33,6 +34,7 @@ This config is the **host-level** description. The container keeps its own inter
 ```json
 {
   "naoqi": { "version": "2.1", "ready_timeout_s": 240 },
+  "robot": { "posture": "crouch", "motors": false, "life": false },
   "speech": { "languages": ["English", "French"] },
   "audio_output": { "mode": "play", "record": null },
   "audio_input": { "source": "none", "mono": "duplicate" },
@@ -46,6 +48,7 @@ This config is the **host-level** description. The container keeps its own inter
 @dataclass
 class NaoqiSimConfig:
     naoqi: NaoqiSettings = field(default_factory=NaoqiSettings)
+    robot: RobotSettings = field(default_factory=RobotSettings)
     speech: SpeechSettings = field(default_factory=SpeechSettings)
     audio_output: AudioOutputSettings = field(default_factory=AudioOutputSettings)
     audio_input: AudioInputSettings = field(default_factory=AudioInputSettings)
@@ -63,6 +66,18 @@ class NaoqiSettings:
     version: NaoqiVersion = "2.1"
     # start() waits this long for the container to be healthy
     ready_timeout_s: float = 240.0
+
+
+@dataclass
+class RobotSettings:
+    """The robot's state when the sim is ready (autonomous-life.md, "The state at boot")."""
+
+    # "crouch" | "stand" | "sit" ("sit": 2.1 only)
+    posture: RobotPosture = "crouch"
+    # the motors on (stiffness 1) or off (stiffness 0)
+    motors: bool = False
+    # Autonomous Life running (solitary) or disabled
+    life: bool = False
 
 
 @dataclass
@@ -147,7 +162,7 @@ class SpeechRecognitionSettings:
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
 - **The device blocks are named after the device** ([devices.md](../host/devices.md)): `audio_output`, `audio_input`, `video_input`, each specified in its own spec under `host/`.
-- **`NaoqiSimConfig()` is valid and useful**: NAOqi 2.1 with speech on the host loudspeaker, the viewer window on the `empty` scene, and no video or audio input (each `NaoqiSim/*/Source` key stays `none`).
+- **`NaoqiSimConfig()` is valid and useful**: NAOqi 2.1, the robot crouched with its motors off and Life off, with speech on the host loudspeaker, the viewer window on the `empty` scene, and no video or audio input (each `NaoqiSim/*/Source` key stays `none`).
 - The `audio_output` block picks the audio output's sink when the caller passes none ([audio-output.md](../host/audio-output.md), "Audio sinks"; [api.md](api.md)): `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A sink passed in code (`MemorySink` in tests) wins over the block.
 - Paths (`audio_output.record`, and `viewer.scene` when it ends in `.xml`) are resolved relative to the config file when loaded with `from_json_file`, and relative to the working directory otherwise.
 
@@ -157,7 +172,7 @@ class SpeechRecognitionSettings:
 - Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio_output.record`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
 - **Unknown keys are errors**, so a typo fails when the config loads.
 - **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; a camera's `fps` is an integer from 1 to 30 (a NAO camera's maximum) and its `device` a non-negative integer; `viewer.scene` is a non-empty string; `speech.languages` is a non-empty list of distinct names, each one the engine has a voice for (`SPEECH_LANGUAGES`, which the fast tier checks against the engine's table), so a language NAOqi supports but the engine has no voice for (`Japanese`) fails at load, naming the languages that have one, rather than at the first `say`. In code a list is accepted and kept as a tuple.
-- **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`; `viewer.cameras_display` and `viewer.people_display` are refused with `viewer.headless` (the pictures and the markers are drawn in the window, as naoqi-viewer refuses them). Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
+- **Cross-field checks at load:** the `robot` block takes only the states a NAO can be in, each refusal saying why ([autonomous-life.md](../container/autonomous-life.md), "The state at boot"): `posture: "stand"` needs `motors` (a NAO cannot stand with its motors off: that state is `crouch`), `life` needs `motors` and a `posture` of `stand` or `sit` (Life stands the robot up), and `sit` needs `naoqi.version` 2.1 (the 2.8 sim cannot reliably sit); `audio_output.mode = "record"` needs `audio_output.record`; `viewer.cameras_display` and `viewer.people_display` are refused with `viewer.headless` (the pictures and the markers are drawn in the window, as naoqi-viewer refuses them). Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
 - **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists, a language's voice can be fetched: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `naoqi_viewer`, nor `sounddevice`.
 
@@ -214,6 +229,7 @@ JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, a
 - `2.8.json`: the same on 2.8;
 - `headless.json`: 2.1, no window, silent audio output (servers);
 - `ci.json`: 2.1, headless viewer with the placeholder variant, both cameras on `render` (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
+- `life.json`: 2.1, window, the robot standing with Autonomous Life on when the sim is ready, as a NAO whose Life starts at boot;
 - `mic.json`: 2.1, window, speech on the loudspeaker, `audio_input.source = "mic"`: the robot hears the room, its own voice included, as a NAO does;
 - `webcam.json`: 2.1, window, the host's default webcam (`device` 0) on the top camera and the render on the bottom one: the robot sees the room through its top camera, and the `mixed` summary shows; `viewer.cameras_display` on, so the window shows both cameras as `ALVideoDevice` serves them; needs the `webcam` and `viewer` extras.
 

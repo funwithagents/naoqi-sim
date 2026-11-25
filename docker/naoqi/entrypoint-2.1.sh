@@ -31,5 +31,5 @@ check_answer added $ADDED
 check_answer "added built-in" $BUILTINS
 vision_2d ALFastPersonTracking ALFindPersonHead ALMovementDetection
 allow_life_state_changes
-rest
+robot_state
 mark_ready

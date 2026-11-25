@@ -13,6 +13,7 @@ from naoqi_sim.config import (
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
+    RobotSettings,
     SpeechRecognitionSettings,
     SpeechSettings,
     VideoInputSettings,
@@ -34,6 +35,8 @@ def test_an_empty_config_is_the_defaults():
     assert config == NaoqiSimConfig()
     assert config.naoqi.version == "2.1" and config.naoqi.ready_timeout_s == 240.0
     assert config.speech.languages == ("English", "French")
+    # a NAO whose Life does not start at boot, at rest
+    assert config.robot == RobotSettings(posture="crouch", motors=False, life=False)
     assert config.audio_output.mode == "play"
     assert config.audio_input.source == "none"
     assert config.video_input == VideoInputSettings(
@@ -218,6 +221,7 @@ def test_the_example_files_load():
         "default.json",
         "headless.json",
         "languages.json",
+        "life.json",
         "mic.json",
         "webcam.json",
     ]
@@ -236,6 +240,10 @@ def test_the_example_files_load():
     assert ci.audio_input.source == "fake"
     languages = NaoqiSimConfig.from_json_file(EXAMPLES / "languages.json")
     assert languages.speech.languages == ("English", "French", "German")
+    life = NaoqiSimConfig.from_json_file(EXAMPLES / "life.json")
+    assert life == NaoqiSimConfig(
+        robot=RobotSettings(posture="stand", motors=True, life=True)
+    )
     mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
     assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))
     webcam = NaoqiSimConfig.from_json_file(EXAMPLES / "webcam.json")
@@ -283,3 +291,41 @@ def test_the_perception_engine_is_on_unless_the_config_turns_it_off():
     assert error_for({"perception": {"enabled": 1}}).key == "perception.enabled"
     unknown = error_for({"perception": {"detector": "yunet"}})
     assert unknown.key == "perception" and "perception.detector" in str(unknown)
+
+
+@pytest.mark.parametrize(
+    "robot",
+    [
+        {},
+        {"posture": "stand", "motors": True},
+        {"posture": "stand", "motors": True, "life": True},
+        {"posture": "sit"},
+        {"posture": "sit", "motors": True},
+        {"posture": "sit", "motors": True, "life": True},
+    ],
+)
+def test_the_robot_states_a_nao_can_be_in(robot):
+    config = NaoqiSimConfig.from_dict({"robot": robot})
+    assert config.robot == RobotSettings(**robot)
+
+
+@pytest.mark.parametrize(
+    ("robot", "key", "why"),
+    [
+        ({"posture": "stand"}, "robot.motors", "cannot stand with its motors off"),
+        ({"posture": "sit", "life": True}, "robot.motors", "Life needs the motors on"),
+        ({"motors": True, "life": True}, "robot.posture", "stands the robot up"),
+        ({"posture": "lying"}, "robot.posture", "must be one of"),
+    ],
+)
+def test_a_state_a_nao_cannot_be_in_is_refused_saying_why(robot, key, why):
+    error = error_for({"robot": robot})
+    assert error.key == key and why in error.message
+
+
+def test_the_2_8_sim_cannot_sit():
+    error = error_for({"naoqi": {"version": "2.8"}, "robot": {"posture": "sit"}})
+    assert error.key == "robot.posture" and "inertial sensor" in error.message
+    assert (
+        NaoqiSimConfig.from_dict({"robot": {"posture": "sit"}}).robot.posture == "sit"
+    )

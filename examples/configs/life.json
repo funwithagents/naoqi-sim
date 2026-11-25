@@ -1,0 +1,3 @@
+{
+  "robot": { "posture": "stand", "motors": true, "life": true }
+}

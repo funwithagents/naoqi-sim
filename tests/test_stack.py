@@ -15,6 +15,7 @@ from naoqi_sim.config import (
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
+    RobotSettings,
     SpeechRecognitionSettings,
 )
 from naoqi_sim.errors import DockerUnavailableError, NaoqiSimError
@@ -126,6 +127,23 @@ def test_the_services_and_environment_follow_the_engines_switches():
     assert (
         stack.compose_env(deaf)["NAOQI_SIM_PERCEPTION_URL"] == "http://perception:8080"
     )
+
+
+def test_the_robot_block_reaches_the_entrypoint():
+    default = stack.compose_env(NaoqiSimConfig())
+    assert (
+        default["NAOQI_SIM_ROBOT_POSTURE"],
+        default["NAOQI_SIM_ROBOT_MOTORS"],
+        default["NAOQI_SIM_ROBOT_LIFE"],
+    ) == ("crouch", "off", "off")
+    life = stack.compose_env(
+        NaoqiSimConfig(robot=RobotSettings(posture="stand", motors=True, life=True))
+    )
+    assert (
+        life["NAOQI_SIM_ROBOT_POSTURE"],
+        life["NAOQI_SIM_ROBOT_MOTORS"],
+        life["NAOQI_SIM_ROBOT_LIFE"],
+    ) == ("stand", "on", "on")
 
 
 def test_a_status_without_an_engines_key_reads_none(monkeypatch):
