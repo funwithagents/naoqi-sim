@@ -1,6 +1,6 @@
 # People perception: the match follows a walking person
 
-**Status:** In progress
+**Status:** Done
 
 Implements the updated matching rule in [people-perception.md](../specs/services/people-perception.md) ("A face is a person"): the radius within which a face is a known person grows with the time since that person was last seen, at walking speed, so a person walking toward the robot keeps their id when detections are sparse. The CI's live tier gave a new id to a face moved from 2 m to 1 m in 1 s (`test_a_face_walking_in_is_sorted_into_the_zones`, `test_the_launchpad_keys_follow_a_person_walking_in`, failing since the engagement zones). Crowds and crossing faces stay open question 1.
 

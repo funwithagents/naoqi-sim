@@ -13,7 +13,7 @@ tests:
 
 # People perception: ALPeoplePerception replacement
 
-**Status:** Updated
+**Status:** Implemented
 
 Design settled Oct 29, 2026 (the survey in `spike/RESULTS.md`, "Face detection and people perception survey"); built by [plans/202610291800_face-detection-and-people-perception.md](../../plans/202610291800_face-detection-and-people-perception.md).
 
