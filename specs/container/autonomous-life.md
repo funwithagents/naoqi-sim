@@ -21,7 +21,7 @@ tests:
 
 # Autonomous Life and the main dialog
 
-**Status:** Draft
+**Status:** Stable
 
 Decisions of Nov 25, 2026, on the surveys of Nov 20 and 21 (trail in `spike/RESULTS.md`, from "Life and the dialog on 2.8" on; a real NAO 2.1 measured Nov 21). The boot state and the whole chain were measured on both sims on Nov 25, 2026; the open questions are deferrals. Built so far (Nov 25, 2026): the boot state on both versions, 2.1's `setState`, and a NAO's Life configuration on 2.8; the rest has no plan yet.
 
@@ -125,7 +125,7 @@ As on a robot out of the box: the dialog content (`dialog_lexicon`, `dialog_appl
 | `setState("disabled")` | At rest again |
 
 - **Built** (Nov 25, 2026): `tests-e2e/test_life_scenario_live.py`, on both versions, after `setState("solitary")` (the boot state is checked by `test_boot_live.py`); again in French, without the application, on a sim booted with `robot.language` French.
-- **Known issue, 2.1: after an application, `setState("disabled")` sometimes leaves the robot where it stood.** Measured Nov 26, 2026, 3 runs in 6: Life `disabled`, `robotIsWakeUp()` false and the stiffness 0, as always, but the posture still `StandInit` instead of `Crouch` (the simulated joints hold their angles at stiffness 0, so the robot does not sag as a NAO would). Without an application it always ends in `Crouch`. The scenario checks the rest (not awake, stiffness off), not the posture. Not investigated further.
+- **Known issue, 2.1: after an animation, `setState("disabled")` sometimes leaves the robot where it stood.** Measured Nov 26, 2026, 4 runs in 12 of the scenario with the application: Life `disabled`, `robotIsWakeUp()` false and the stiffness 0, as always, but the posture unchanged (`StandInit`, `StandZero`) instead of `Crouch`. The cause is the posture family ([naoqi-fidelity.md](naoqi-fidelity.md), "the posture family follows the joints"): an animation (here the dialog's "let's go") can leave the family on `LyingBack` or `LyingBelly`, and Life then takes the stiffness off without crouching (0.1 s, against 5.3 s to Crouch from `Standing`). No fall is detected. The scenario checks the rest (not awake, stiffness off), not the posture.
 - The live tests that move joints wake the robot first.
 
 ## Specs this changes when it is built

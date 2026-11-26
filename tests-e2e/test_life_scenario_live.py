@@ -118,8 +118,9 @@ def scenario(nao, tmp_path: Path, said: str, answer: str, starts_app: bool) -> N
         pm = nao.service("PackageManager")
         for name in names:
             pm.removePkg(name)
-    # at rest again: not awake, the stiffness off. After an application on 2.1 the robot is
-    # sometimes left where it stood rather than crouched (autonomous-life.md, "Tests")
+    # at rest again: not awake, the stiffness off. On 2.1 an animation can leave the posture family
+    # on Lying, and the robot is then left where it stood rather than crouched (autonomous-life.md,
+    # "Tests"; naoqi-fidelity.md)
     motion = nao.service("ALMotion")
     wait_until(
         lambda: not motion.robotIsWakeUp() and max(motion.getStiffnesses("Body")) < 0.1,
