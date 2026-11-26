@@ -108,7 +108,7 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
             {"robot": {"available_languages": ["English", "French", "French"]}},
             "robot.available_languages",
         ),
-        ({"robot": {"language": "German"}}, "robot.language"),
+        ({"robot": {"language": "German"}}, "robot.language"),  # not installed
         ({"speech": {"languages": ["English"]}}, None),  # the block is gone
         ({"audio_output": {"mode": "loud"}}, "audio_output.mode"),
         ({"audio_input": {"mono": "left"}}, "audio_input.mono"),
@@ -257,7 +257,7 @@ def test_the_example_files_load():
     assert ci.audio_output.mode == "silent"
     assert ci.audio_input.source == "fake"
     languages = NaoqiSimConfig.from_json_file(EXAMPLES / "languages.json")
-    assert languages.robot.available_languages == ("English", "French")
+    assert languages.robot.available_languages == ("English", "French", "German")
     assert languages.robot.language == "French"
     life = NaoqiSimConfig.from_json_file(EXAMPLES / "life.json")
     assert life == NaoqiSimConfig(
@@ -277,7 +277,7 @@ def test_the_example_files_load():
 
 def test_a_language_is_available_only_with_its_language_pack():
     """A voice and a recognition model, as a NAO's language pack installs them; a language with
-    a voice only (German) is refused, naming the languages that have one."""
+    a voice only (Danish) is refused, naming the languages that have one."""
     config = NaoqiSimConfig.from_dict(
         {"robot": {"available_languages": ["French"], "language": "French"}}
     )
@@ -286,12 +286,24 @@ def test_a_language_is_available_only_with_its_language_pack():
     in_code: Any = ["French"]  # a list in code is kept as a tuple
     robot = RobotSettings(available_languages=in_code, language="French")
     assert robot.available_languages == ("French",)
-    error = error_for({"robot": {"available_languages": ["English", "German"]}})
-    assert "'German' has no language pack" in str(error) and "English, French" in str(
-        error
+    german = NaoqiSimConfig.from_dict(
+        {
+            "robot": {
+                "available_languages": ["German", "Portuguese"],
+                "language": "German",
+            }
+        }
     )
-    assert LANGUAGES == ("English", "French")
+    assert german.robot.available_languages == ("German", "Portuguese")
+    error = error_for({"robot": {"available_languages": ["English", "Danish"]}})
+    assert "'Danish' has no language pack" in str(error)
+    assert "English, French, German, Dutch" in str(error)
+    for voice_only in ("Danish", "Finnish", "Norwegian", "Japanese"):
+        assert voice_only not in LANGUAGES
     assert set(LANGUAGES) <= set(SPEECH_LANGUAGES)  # each has a voice
+    assert LANGUAGES == tuple(
+        l for l in SPEECH_LANGUAGES if l in LANGUAGES
+    )  # its order
 
 
 def test_the_language_at_boot_must_be_available():

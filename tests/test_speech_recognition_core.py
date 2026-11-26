@@ -333,14 +333,23 @@ def test_without_the_audio_expression_no_bip_is_played(rig):
     assert not any(k in ("bip", "leds") for k, *_ in r.trace.items)
 
 
+def test_the_module_knows_the_languages_the_engine_has_a_model_for():
+    """The module's list and the engine's table agree (the config's language packs too)."""
+    from naoqi_sim.config import LANGUAGES
+
+    assert core.LANGUAGES == LANGUAGES
+
+
 def test_languages_are_the_installed_ones_the_engine_has(rig):
-    r = rig("2.1", installed=("German", "French"))
-    assert r.rec.languages == ["French"] and r.rec.language == "French"
+    r = rig("2.1", installed=("Danish", "French", "German"))
+    assert r.rec.languages == ["French", "German"] and r.rec.language == "French"
     with pytest.raises(
-        RuntimeError, match="does not support the following language: German"
+        RuntimeError, match="does not support the following language: Danish"
     ):
-        r.rec.set_language("German")
+        r.rec.set_language("Danish")
     assert r.rec.language == "French"
+    r.rec.set_language("German")
+    assert r.rec.language == "German"
     deaf = rig("2.1", installed=("Japanese",))
     deaf.rec.subscribe("Test")  # nothing to listen in: no listening
     assert deaf.trace.items == []

@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir piper-tts==1.8.0 numpy
 
 # The default languages' voices (server.py's DEFAULT_LANGUAGES, the config's default), so a default
 # config speaks with no download at run time. Any other installed language's voice is downloaded
-# on its first use into the volume at /voices. Every voice comes from the same piper-voices
+# on its first use into the language packs volume, at /language-packs/tts-voices. Every voice comes from the same piper-voices
 # release (server.py's VOICES_TAG); each voice's licence is in tts-engine.md, "Voices".
 ARG VOICES_TAG=v1.0.0
 ARG VOICE_BASE=https://huggingface.co/rhasspy/piper-voices/resolve/$VOICES_TAG

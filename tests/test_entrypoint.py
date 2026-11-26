@@ -400,13 +400,13 @@ def test_2_8_chooses_every_installed_language_the_robots_own_last(fakes):
 
 
 def test_2_8_leaves_out_a_language_the_recognition_does_not_have(fakes):
-    """German speaks (its voice is fetched) but has no recognition model: it is not chosen, on any
-    of the three, and the boot goes on."""
-    ep = Entrypoint(fakes, "2.8", {"NAOQI_SIM_LANGUAGES": "English,French,German"})
+    """Danish speaks (its voice is fetched) but has no recognition model: it is not chosen, on any
+    of the three, and the boot goes on (a stack started by hand; the config refuses Danish)."""
+    ep = Entrypoint(fakes, "2.8", {"NAOQI_SIM_LANGUAGES": "English,French,Danish"})
     ep.wait_for_ready()
     ep.stop()
     assert calls_only(fakes) == expected_calls("2.8", ("English", "French"))
-    assert "German is not chosen" in ep.output()
+    assert "Danish is not chosen" in ep.output()
 
 
 @pytest.mark.parametrize("version", ["2.1", "2.8"])
@@ -450,11 +450,11 @@ def test_2_1_sets_the_dialog_to_the_robots_language_when_the_recognition_has_it(
     ep.wait_for_ready()
     ep.stop()
     assert f"call ALDialog.setLanguage French {URLS['2.1']}" in calls_only(fakes)
-    fakes_german = Entrypoint(fakes, "2.1", {"NAOQI_SIM_LANGUAGES": "German,English"})
-    fakes_german.wait_for_ready()
-    fakes_german.stop()
-    assert not any("ALDialog.setLanguage German" in c for c in calls_only(fakes))
-    assert "the recognition does not have German" in fakes_german.output()
+    fakes_danish = Entrypoint(fakes, "2.1", {"NAOQI_SIM_LANGUAGES": "Danish,English"})
+    fakes_danish.wait_for_ready()
+    fakes_danish.stop()
+    assert not any("ALDialog.setLanguage Danish" in c for c in calls_only(fakes))
+    assert "the recognition does not have Danish" in fakes_danish.output()
 
 
 def test_sequence_on_2_8(fakes):

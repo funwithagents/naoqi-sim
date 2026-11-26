@@ -62,7 +62,9 @@ TTS_TIMEOUT = (
     60.0  # seconds for the tts engine to load its voices once NAOqi is healthy
 )
 PERCEPTION_TIMEOUT = 60.0  # seconds for the perception engine to load its model
-ASR_TIMEOUT = 60.0  # seconds for the speech recognition engine to load its models
+ASR_TIMEOUT = (
+    60.0  # seconds for the speech recognition engine to load the image's models
+)
 POLL = 1.0
 
 
@@ -381,13 +383,20 @@ def wait_perception(
 
 def wait_asr(
     images: Images,
+    languages: Iterable[str],
     timeout: float | None = None,
     abort: threading.Event | None = None,
 ) -> None:
-    """Until the speech recognition engine's container is healthy: its models loaded
-    (asr-engine.md, "Image and process"). `BootError` as `wait_tts`, default `ASR_TIMEOUT`."""
+    """Until the speech recognition engine's container is healthy: every installed language's
+    model loaded, a language's first use downloading its model (asr-engine.md, "Models").
+    `BootError` as `wait_tts`, default `ASR_TIMEOUT`."""
     timeout = ASR_TIMEOUT if timeout is None else timeout
-    log.info("%s: waiting for the speech recognition engine", label(images.version))
+    log.info(
+        "%s: waiting for the speech recognition engine to load the models of %s "
+        "(a language's first use downloads its model)",
+        label(images.version),
+        ", ".join(languages),
+    )
     _engine_wait(
         "speech recognition",
         ASR_CONTAINER,
@@ -446,7 +455,9 @@ def _verify(images: Images, env: dict[str, str]) -> None:
             images, RobotSettings().available_languages
         )  # the image has their voices
         wait_perception(images)
-        wait_asr(images)
+        wait_asr(
+            images, RobotSettings().available_languages
+        )  # the image has their models
     finally:
         run(*images.compose(), "down", timeout=300, env=env)
 

@@ -129,7 +129,7 @@ def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> 
     """Until NAOqi is healthy, then until the speech engine is, then until the perception and
     speech recognition engines are when the config runs them: they boot in parallel, and the
     speech engine's first use of a language downloads its voice, which NAOqi's boot usually
-    hides."""
+    hides, as the recognition engine's first use of a language downloads its model."""
     images = IMAGES[config.naoqi.version]
     docker_images.wait_healthy(
         images, timeout=config.naoqi.ready_timeout_s, abort=abort
@@ -146,7 +146,10 @@ def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> 
         )
     if config.speech_recognition.enabled:
         docker_images.wait_asr(
-            images, timeout=config.naoqi.ready_timeout_s, abort=abort
+            images,
+            languages(config),
+            timeout=config.naoqi.ready_timeout_s,
+            abort=abort,
         )
 
 

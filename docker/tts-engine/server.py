@@ -70,7 +70,9 @@ DEFAULT_LANGUAGES = ("English", "French")
 PITCH = {"English": 1.15, "French": 1.15}
 PITCH_RANGE = (0.5, 4.0)  # a NAO's pitchShift goes to 4
 BUILTIN_DIR = os.environ.get("NAOQI_SIM_BUILTIN_VOICES", "/voices-builtin")
-VOICE_DIR = os.environ.get("NAOQI_SIM_VOICES", "/voices")  # the volume
+VOICE_DIR = os.environ.get(
+    "NAOQI_SIM_VOICES", "/language-packs/tts-voices"
+)  # the volume
 SOUNDCARD = os.environ.get("NAOQI_SIM_SOUNDCARD", "host.docker.internal:9562")
 # The installed languages: set from NAOQI_SIM_LANGUAGES when the server starts.
 LANGUAGES = DEFAULT_LANGUAGES

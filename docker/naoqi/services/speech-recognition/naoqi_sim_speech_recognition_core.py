@@ -34,7 +34,12 @@ COMPILER = "_AsrCompiler1"  # 2.8: the dialog waits for it and calls its init()
 ENGINE_URL = os.environ.get("NAOQI_SIM_ASR_URL", "")
 ENGINE_TIMEOUT_S = 2.0
 SOURCE_KEY = "NaoqiSim/SpeechRecognition/Source"
-LANGUAGES = ("English", "French")  # the engine's models
+# The languages the engine has a model for (docker/asr-engine/server.py, MODELS; the fast tier
+# checks the two lists agree), in NAOqi's names
+LANGUAGES = (
+    "English", "French", "German", "Dutch", "Swedish", "Spanish", "Brazilian", "Czech",
+    "Italian", "Polish", "Portuguese", "Russian", "Turkish",
+)
 DEFAULT_PERIOD = 30  # a subscriber's period, as the robot lists it
 WAIT_S = 2.0  # how long subscribe, unsubscribe and pause wait for the statuses
 GUARD_S = 0.35  # audio dropped after (re)starting to listen: the bip, the robot's last words

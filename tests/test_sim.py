@@ -469,7 +469,10 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
         "NAOqi 2.1 (sim): speech engine ready",
         "NAOqi 2.1 (sim): waiting for the perception engine",
         "NAOqi 2.1 (sim): perception engine ready",
-        "NAOqi 2.1 (sim): waiting for the speech recognition engine",
+        (
+            "NAOqi 2.1 (sim): waiting for the speech recognition engine to load the models "
+            "of English, French (a language's first use downloads its model)"
+        ),
         "NAOqi 2.1 (sim): speech recognition engine ready",
         "NAOqi 2.1 (sim): starting naoqi-viewer (headless)",
         "NAOqi 2.1 (sim): starting the video input (top from render)",
