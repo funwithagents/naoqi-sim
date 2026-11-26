@@ -22,6 +22,8 @@ HEAD_HEIGHT = 0.20  # m, the real height of what the detector boxes (brow to chi
 HEAD_TOP = 0.12  # m above the head's centre, for RealHeight
 MATCH_DISTANCE = 0.35  # m: a face whose head is this close to a known person's last position is that person
 # (in the world frame, so a head turning between two frames does not make a new person)
+WALKING_SPEED = 1.5  # m/s: plus how far that person can have walked since last seen...
+MAX_UNSEEN_FOR_MATCH = 1.0  # s: ...counted up to this, so sparse detections keep a walking person's id
 DEFAULT_PERIOD_MS = 200
 FRAME_TORSO, FRAME_WORLD, FRAME_ROBOT = 0, 1, 2
 EVENTS = [PREFIX + e for e in ("JustArrived", "JustLeft", "MaximumDetectionRangeUpdated", "NonVisiblePeopleList",
@@ -131,7 +133,7 @@ class Population(ext.Extractor):
                 if distance > self.get("MaximumDetectionRange"):
                     continue
                 world = transform_point(detection.transforms[FRAME_WORLD], head)
-                person = self._match(world, seen)
+                person = self._match(world, seen, now)
                 if person is None:
                     person = Person(self.next_id, now)
                     self.next_id += 1
@@ -187,13 +189,16 @@ class Population(ext.Extractor):
         self.raise_event(PREFIX + "PopulationUpdated", [stamp, people, [0.0] * 6, [0.0] * 6, 0])
         self.log(method="population", visible=sorted(visible_after), people=sorted(self.people), idle=True)
 
-    def _match(self, world, taken):
-        best, best_d = None, MATCH_DISTANCE
+    def _match(self, world, taken, now):
+        """The nearest person not already matched in this detection, within the distance they can
+        have walked since last seen (people-perception.md, "A face is a person")."""
+        best, best_d = None, None
         for person in self.people.values():
             if person.id in taken:
                 continue
+            unseen = min(max(now - person.last_seen, 0.0), MAX_UNSEEN_FOR_MATCH)
             d = math.sqrt(sum((a - b) ** 2 for a, b in zip(person.world, world)))
-            if d < best_d:
+            if d < MATCH_DISTANCE + WALKING_SPEED * unseen and (best_d is None or d < best_d):
                 best, best_d = person, d
         return best
 
