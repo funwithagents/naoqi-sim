@@ -136,8 +136,8 @@ check_answer() {
 }
 
 # vision_2d <services...>: puts each vision module's detection in 2D, as on a real NAO, which has no
-# depth camera (bobby: fast person tracking, find person head, people perception and movement
-# detection all 2D). The desktop's virtual robot declares one (camera index 2) that nothing feeds,
+# depth camera (a real NAO 2.1: fast person tracking, find person head, people perception and
+# movement detection all 2D). The desktop's virtual robot declares one (camera index 2) that nothing feeds,
 # so in their default 3D mode the trackers never find anyone and ALBasicAwareness, after its first
 # look, never follows a person (specs/container/naoqi-fidelity.md).
 vision_2d() {

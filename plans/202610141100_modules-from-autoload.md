@@ -2,7 +2,7 @@
 
 **Status:** Done
 
-Implements [service-replacement.md](../specs/container/service-replacement.md) ("Loading a module", "Replacing a built-in") and [container.md](../specs/container/container.md) ("The native build", "Entrypoint", "Matching a NAO's modules"). Our modules stop replacing the built-ins after the fact (let them load, `exit()` them, load ours over `ALLauncher`, relaunch or restart every module that held a proxy to them): the entrypoint starts NAOqi from an autoload copy where the built-ins' entries are left out and ours sit right after `pythonbridge`, with a new C++ loader module loading our Python modules at that point. Everything NAOqi loads afterwards finds our modules in place. Investigated in `spike/RESULTS.md` ("Loading from autoload instead of exiting the built-ins"). It leaves the modules themselves (cores, fronts, relay) unchanged.
+Implements [service-replacement.md](../specs/container/service-replacement.md) ("Loading a module", "Replacing a built-in") and [container.md](../specs/container/container.md) ("The native build", "Entrypoint", "Matching a NAO's modules"). Our modules stop replacing the built-ins after the fact (let them load, `exit()` them, load ours over `ALLauncher`, relaunch or restart every module that held a proxy to them): the entrypoint starts NAOqi from an autoload copy where the built-ins' entries are left out and ours sit right after `pythonbridge`, with a new C++ loader module loading our Python modules at that point. Everything NAOqi loads afterwards finds our modules in place. Investigated before this plan. It leaves the modules themselves (cores, fronts, relay) unchanged.
 
 ## Scope
 
@@ -16,7 +16,7 @@ Implements [service-replacement.md](../specs/container/service-replacement.md) (
 
 ## Steps
 
-1. The loader, from the spike's, with the module list and the modules folder from the environment; compiled in both images by the existing native stage.
+1. The loader, from the investigation's prototype, with the module list and the modules folder from the environment; compiled in both images by the existing native stage.
 2. The Dockerfiles install the `.so` files in `/opt/naoqi/lib/naoqi/`.
 3. `entrypoint-lib.sh`: `write_autoload <left out entries> <anchor>:<entry>,<entry>...`; remove the launch and exit helpers.
 4. Both entrypoints: constants and sequence of container.md, "Entrypoint".

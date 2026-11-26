@@ -15,7 +15,7 @@ tests:
 
 **Status:** Implemented
 
-Decided Nov 25, 2026, after finding why the desktop launchpad writes no people key (trail in `spike/RESULTS.md`, "Launchpad plugins: why none starts on the sims"). What a NAO 2.1 writes was measured on a real one on Nov 21, 2026. Plan: [202611252200_engagement-zones-and-launchpad-people.md](../../plans/202611252200_engagement-zones-and-launchpad-people.md). Reviewed by the user Nov 25, 2026; built Nov 25, 2026.
+Decided Nov 25, 2026, after finding why the desktop launchpad writes no people key. What a NAO 2.1 writes was measured on a real one on Nov 21, 2026. Plan: [202611252200_engagement-zones-and-launchpad-people.md](../../plans/202611252200_engagement-zones-and-launchpad-people.md). Reviewed by the user Nov 25, 2026; built Nov 25, 2026.
 
 ## Purpose
 

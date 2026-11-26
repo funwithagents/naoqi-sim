@@ -2,9 +2,9 @@
 
 **Status:** Done
 
-Implements the toolkit rename decided on Oct 12, 2026 ([analysis/naoqi-rename.md](../analysis/naoqi-rename.md): what changes, what stays, the order across the four repositories, the local migration). This plan renames nao-sim to naoqi-sim everywhere a name comes from the package: repository, distribution, import package, CLI, the `NaoSim*` classes and config, the `NaoSim` service and `NaoSim/*` ALMemory keys (the cross-package contract, [status-service.md](../specs/container/status-service.md)), the NAOqi-side modules and files, Docker names and labels, `NAO_SIM_*` variables, the user data directory, specs and docs; and follows naoqi-viewer's rename. It changes no behavior and adds no compatibility alias.
+Implements the toolkit rename decided on Oct 12, 2026 (in local notes, not committed: what changes, what stays, the order across the four repositories, the local migration). This plan renames nao-sim to naoqi-sim everywhere a name comes from the package: repository, distribution, import package, CLI, the `NaoSim*` classes and config, the `NaoSim` service and `NaoSim/*` ALMemory keys (the cross-package contract, [status-service.md](../specs/container/status-service.md)), the NAOqi-side modules and files, Docker names and labels, `NAO_SIM_*` variables, the user data directory, specs and docs; and follows naoqi-viewer's rename. It changes no behavior and adds no compatibility alias.
 
-**Kept** (robot or upstream names): "a NAO in a box" and prose about the robot, Aldebaran's file names (`nao-x86-…` suites, `.opn` images), `nao_meshes` (upstream, one mention), the NAOqi module names nao-sim replaces (`ALTextToSpeech`, `ALAudioDevice`, `ALAudioPlayer`). `Done` plans and the older notes in `analysis/` are historical records and stay as written.
+**Kept** (robot or upstream names): "a NAO in a box" and prose about the robot, Aldebaran's file names (`nao-x86-…` suites, `.opn` images), `nao_meshes` (upstream, one mention), the NAOqi module names nao-sim replaces (`ALTextToSpeech`, `ALAudioDevice`, `ALAudioPlayer`). `Done` plans and the older local notes are historical records and stay as written.
 
 ## Scope
 
@@ -40,7 +40,7 @@ Files:
 - `specs/` — all 21 specs: names, contract, the `code:`/`tests:` frontmatter paths (`src/naoqi_sim/…`, `docker/naoqi/services/**/naoqi_sim_*`); `_overview.md`; `status-service.md` (the contract table: service, methods, keys, target id); `container.md` (images, label, compose project, volumes); `project.md` (distribution, data directory, the `viewer` extra); `runtime/*.md` (`NaoqiSimConfig`, `NaoqiSim`, the `naoqi-sim` command); `host/viewer.md` (naoqi-viewer's API); `testing/*.md` (variables, CI)
 - `specs/_index.md`, `plans/_index.md` — names in prose and this plan's row
 - `AGENTS.md` — the project map (module rows `src/naoqi_sim/*`, which `tests/test_project_map.py` checks; the `docker/` row's file names), the e2e and linting sections; `README.md`
-- `analysis/nao-toolkit-spec.md` → `analysis/naoqi-toolkit-spec.md` (untracked): title "NAOqi toolkit (naoqi-bridge, naoqi-sim, naoqi-viewer)", every name and the contract, the open question "Repository names" closed by this rename
+- The toolkit's cross-package notes (local, untracked): title "NAOqi toolkit (naoqi-bridge, naoqi-sim, naoqi-viewer)", every name and the contract, the open question "Repository names" closed by this rename
 
 Spec statuses: the spec edits land in the same change as the code, so every `Implemented` spec stays `Implemented`. If the spec edits are committed ahead of the code, set the touched specs to `Updated` until this plan is `Done`.
 
@@ -60,7 +60,7 @@ Spec statuses: the spec edits land in the same change as the code, so every `Imp
 6. `pyproject.toml`: the git pin to naoqi-viewer's commit A; `uv lock && rm -rf .venv && uv sync --dev`; `uv cache clean nao-viewer`.
 7. Lint, type check, fast tests (Verification).
 8. **Docker**: `docker rmi nao-sim/naoqi:2.1.4.13 nao-sim/naoqi:2.8.7.4 nao-sim/tts:dev`, `docker volume rm nao-sim_packages-2.1 nao-sim_packages-2.8`; `uv run naoqi-sim fetch-and-build-images` (both versions, from `docker/image-data/`, nothing downloaded); `uv run pytest tests-e2e` on both versions.
-9. Update `analysis/nao-toolkit-spec.md` as `analysis/naoqi-toolkit-spec.md`.
+9. Update the toolkit's cross-package notes (local).
 10. Commit, push, CI green on both tiers and both versions; merge. Hand the merge commit to naoqi-viewer's plan (step 9, `NAOQI_SIM_REF`). If naoqi-viewer's branch is squash-merged, re-pin naoqi-viewer to its merge commit in a follow-up commit.
 11. **Claude memory** in `~/.claude/projects/-Users-thibault-code-funwithagents-naoqi-sim/memory/`, once the code matches: new names in every memory that has old ones (`libqi3-connect-flaky-retry`, `naming-by-role-spec-matches-code`, `nao-opn-images-contents`, `naoqi-cpp-front-gotchas`, `py2-cannot-send-binary-native-relay`, `toolkit-cross-spec-decisions`); `nao-sim-spike-results.md` → `naoqi-sim-spike-results.md` with its `name:`, its `MEMORY.md` line and the `[[links]]` to it; `toolkit-rename-to-naoqi.md` rewritten as done: what was renamed, the product-versus-robot rule, the robot names kept for Pepper work. Remove `~/claude-projects-backup-20261012` once all four repositories are verified.
 

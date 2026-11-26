@@ -291,7 +291,7 @@ def test_awareness_raises_the_head_to_a_face_above_the_camera(nao, standing):
     """A face above the camera, as a visitor's face is above a NAO's: awareness raises the head
     until the face is on the camera's axis. Measured from the floor, the angles sent the head far
     past the face (or out of its reach for a face close by: the head never moved with a webcam);
-    bobby showed they are the camera's (people-perception.md). The face sits 1.5 m ahead and
+    a real NAO 2.1 showed they are the camera's (people-perception.md). The face sits 1.5 m ahead and
     0.2 m above the camera, about 0.13 rad up: fully in both versions' top camera, whose view ends
     about 0.42 rad up, so the detector sees it whole."""
     motion = nao.service("ALMotion")
@@ -317,7 +317,7 @@ def test_awareness_raises_the_head_to_a_face_above_the_camera(nao, standing):
 
 
 def test_the_last_subscriber_leaving_clears_the_population(nao, standing):
-    """As a NAO does (bobby, Oct 29, 2026): cleared at once, with PopulationReset."""
+    """As a NAO does (a NAO 2.1, Oct 29, 2026): cleared at once, with PopulationReset."""
     nao.service(
         "ALBasicAwareness"
     ).stopAwareness()  # 2.8's life runs it: no other subscriber

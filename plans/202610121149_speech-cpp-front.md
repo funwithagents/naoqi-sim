@@ -10,12 +10,12 @@ Implements:
 
 Left out: speech.md's other open questions (`getLanguageEncoding`, `sayToFileAndPlay`, subtitles, the duration tolerance, word events) and everything of the audio player plan (mixing, the `speech` stream name), which follows this one.
 
-The design was measured before writing this plan (Oct 12, 2026, `spike/RESULTS.md`, "ALAudioPlayer: formats, task ids, wait and stop" and "Speech: the boxes' stop, signals from C++"; scripts `spike/player_cpp/`, `spike/say_stop.py`). Today the Say box's `stop(id)` is ignored on 2.1 and the Say box fails on 2.8; a stop on `ALAnimatedSpeech` never reaches the speech on either version.
+The design was measured before writing this plan (Oct 12, 2026). Today the Say box's `stop(id)` is ignored on 2.1 and the Say box fails on 2.8; a stop on `ALAnimatedSpeech` never reaches the speech on either version.
 
 ## Scope
 
 **Container**
-- `docker/naoqi/services/speech/nao_sim_speech_front.cpp` (new): `ALTextToSpeech`, the C++ front, from `spike/player_cpp/spikecppplayer.cpp` and `spikesignal.cpp`.
+- `docker/naoqi/services/speech/nao_sim_speech_front.cpp` (new): `ALTextToSpeech`, the C++ front, from the measurement's prototypes.
 - `docker/naoqi/services/speech/nao_sim_speech_core.py`: `Speaker` takes the call's id, `stop(id)`, a queue of waiting calls, `is_done(id)`, `new_id()`; signals through a callback the shells give it.
 - `docker/naoqi/services/speech/nao_sim_speech_almodule.py`, `docker/naoqi/services/speech/nao_sim_speech_qiservice.py`: registered as `_NaoSimTextToSpeech`; the start/poll methods the front calls; on 2.8 no signals of their own (the front's), `_fire` called on the front.
 - `docker/naoqi/Dockerfile.naoqi-2.1`, `docker/naoqi/Dockerfile.naoqi-2.8`: the front built in the `native` stage with the relay's flags, `ldd -r` checked, copied next to the relay.

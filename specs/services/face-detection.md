@@ -15,7 +15,7 @@ tests:
 
 **Status:** Implemented
 
-Design settled Oct 29, 2026 (the survey in `spike/RESULTS.md`, "Face detection and people perception survey"); built by [plans/202610291800_face-detection-and-people-perception.md](../../plans/202610291800_face-detection-and-people-perception.md).
+Design settled Oct 29, 2026, after a survey of both images; built by [plans/202610291800_face-detection-and-people-perception.md](../../plans/202610291800_face-detection-and-people-perception.md).
 
 ## Purpose
 
@@ -25,7 +25,7 @@ The module replaces nothing: no built-in holds the name on either version, so it
 
 ## Decided
 
-### The contract (from the robot's inventory, `spike/robot-2.1.json`, and the 2.1 and 2.8 documentation)
+### The contract (from a real NAO 2.1's inventory and the 2.1 and 2.8 documentation)
 
 - **Extractor API**, the generics every NAOqi extractor has: `subscribe(name, period, precision)` and `subscribe(name)`, `unsubscribe(name)`, `updatePeriod(name, period)`, `updatePrecision(name, precision)`, `getCurrentPeriod`, `getCurrentPrecision`, `getMyPeriod(name)`, `getMyPrecision(name)`, `getSubscribersInfo` (rows `[name, period, precision]`, as the robot answers them), `getOutputNames`, `getEventList`, `getMemoryKeyList`, `isPaused`, `isProcessing`, `pause(bool)`. On 2.1 the one-argument `subscribe` is a second binding (`BIND_PYTHON`); on 2.8 the overloads are one varargs method, since a qi service registers one signature per method name (measured: a fixed arity made 2.8's awareness fail its `subscribe(name)` and die).
 - **The module's own methods**: `setActiveCamera(int) -> bool` and `getActiveCamera` (0 the top camera, 1 the bottom one; the detection follows), `setResolution(int) -> bool` and `getResolution` (kept and answered; the detection runs at VGA whatever it says, since the engine wants the pixels, [perception-engine.md](../container/perception-engine.md)), `setFrameRate(int) -> bool` and `getFrameRate`, `setParameter(name, value)`, `setTrackingEnabled(bool)`, `isTrackingEnabled`, `enableTracking(bool)`, `setRecognitionEnabled(bool)`, `isRecognitionEnabled`, `enableRecognition(bool)`, `setRecognitionConfidenceThreshold(float)`, `getRecognitionConfidenceThreshold`, and the recognition calls below. The hidden ones the robot has (`_getDetectionMode`, `_setDetectionMode`, `_isFaceAnalysisEnabled`, `_setFaceAnalysisEnabled`, `_run`) are accepted, kept and answered too.
@@ -59,5 +59,5 @@ Oct 29, 2026, same setup as [people-perception.md](people-perception.md) ("As me
 
 1. **Recognition.** SFace in the engine, `learnFace` storing an embedding under the name, `faceLabel` and `scoreReco` filled, `Time_Filtered_Reco_Info` as documented. Deferred until a client needs it.
 2. **The point lists.** The eye, eyebrow, nose and mouth points beyond the five landmarks are placed at a face's proportions from the box; a client that reads them gets plausible, not measured, points. A richer landmark model would fill them.
-3. **The robot's cadence.** Whether a NAO raises `FaceDetected` once per processed frame, and `[]` once or at every empty frame, is to confirm on a real NAO 2.1 (`bobby`); the module follows the documentation meanwhile.
+3. **The robot's cadence.** Whether a NAO raises `FaceDetected` once per processed frame, and `[]` once or at every empty frame, is to confirm on a real NAO 2.1; the module follows the documentation meanwhile.
 4. **`ALFaceTracker` (2.1)** ships in the suite but is not loaded; a real NAO 2.1 runs it on `FaceDetected`. Loading it is a one-line entrypoint change once a client wants it ([naoqi-fidelity.md](../container/naoqi-fidelity.md), open question 1).

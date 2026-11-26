@@ -26,7 +26,7 @@ Done Oct 29, 2026: lint, type check, the fast tier (427 passed) and `tests-e2e/t
 
 ## Amended Oct 29, 2026: what a real NAO does
 
-Measured on bobby (a real NAO 2.1) the same day, two things changed this plan:
+Measured on a real NAO 2.1 the same day, two things changed this plan:
 
 - **Leaving**: a NAO clears its population at once when the last subscriber leaves, with `PopulationReset` and no `JustLeft`. That replaces the timers with nobody subscribed; the timers stay for a paused module.
 - **Frames**: `Distance` is the camera-to-head distance and `AnglesYawPitch` the head's angles from the camera's axis, and so are the `PeopleDetected`/`PopulationUpdated` entries. Ours were measured from the floor origin, which put a visitor's face, above the camera, out of the head's reach: with a webcam, awareness never moved the head.
@@ -37,6 +37,6 @@ Verified after the amendment: the fast tier (428 passed) and `tests-e2e/test_per
 
 ## Amended again: awareness never followed a person
 
-With the webcam, awareness looked at the person once and never followed. Reproduced in render mode on both versions with a face prop moved after the first look; the live tests only checked the first look. The cause: fast person tracking, which awareness tracks people with, runs in 3D on the desktop and reads a depth camera nothing feeds, so `ALTracker` loses the person at once. Bobby runs it, find person head, people perception and movement detection in 2D (no depth camera). Scope added: the entrypoints put the three vision modules in 2D before boot completes (`entrypoint-lib.sh`, `vision_2d`), their tests, a live test of awareness following a face that moves, [naoqi-fidelity.md](../specs/container/naoqi-fidelity.md) and [container.md](../specs/container/container.md) `Updated` until verified.
+With the webcam, awareness looked at the person once and never followed. Reproduced in render mode on both versions with a face prop moved after the first look; the live tests only checked the first look. The cause: fast person tracking, which awareness tracks people with, runs in 3D on the desktop and reads a depth camera nothing feeds, so `ALTracker` loses the person at once. A real NAO 2.1 runs it, find person head, people perception and movement detection in 2D (no depth camera). Scope added: the entrypoints put the three vision modules in 2D before boot completes (`entrypoint-lib.sh`, `vision_2d`), their tests, a live test of awareness following a face that moves, [naoqi-fidelity.md](../specs/container/naoqi-fidelity.md) and [container.md](../specs/container/container.md) `Updated` until verified.
 
 Verified after this amendment: the fast tier (430 passed) and `tests-e2e/test_perception_live.py`, `test_modules_live.py`, `test_motion_live.py` on both versions (58 passed, 2 expected failures). The webcam's fixed camera keeps the head drifting while the person stays off-centre: documented as a limitation ([video-input.md](../specs/host/video-input.md), "The webcam source", open question 8). One 2.8 verification boot failed during the image build (exited unhealthy) and passed on the next; not reproduced since.

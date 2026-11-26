@@ -20,7 +20,7 @@ Implements [video-input.md](../specs/host/video-input.md) for the `render` sourc
 
 ## Steps
 
-1. **Measure the bottom camera first** (spike script, both versions): subscribe to `CameraBottom` on a fresh stack, with nothing ever injected into it, and record what `getImageRemote` returns (`None`, an error, a blank frame). Write the result into video-input.md's "As measured". If it raises in a way a NAO never does, stop and bring it back to the spec before going on (injecting one black frame at start is the fallback the discussion named).
+1. **Measure the bottom camera first** (a measurement script, both versions): subscribe to `CameraBottom` on a fresh stack, with nothing ever injected into it, and record what `getImageRemote` returns (`None`, an error, a blank frame). Write the result into video-input.md's "As measured". If it raises in a way a NAO never does, stop and bring it back to the spec before going on (injecting one black frame at start is the fallback the discussion named).
 2. **Config.** `VideoInputSettings.fps: int = 15`, parsed with `_as_int`, `ConfigError(key="fps")` outside 1..30. Tests: default, bounds (0, 1, 30, 31), a float or a string refused, the key path `video_input.fps` in the message.
 3. **The device, `video_input.py`.**
    - `FrameSource` protocol: `frame() -> np.ndarray` (480×640×3 `uint8` RGB). `RenderSource(world)` calls `world.camera_frame("top", 640, 480)`.

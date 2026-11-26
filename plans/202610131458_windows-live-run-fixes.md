@@ -17,7 +17,7 @@ Implements [cli.md](../specs/runtime/cli.md) ("How `run` hears Ctrl-C": Ctrl-Bre
 
 ## Steps
 
-1. The one-off workflow (kept untracked in `spike/`): WSL 2 with Docker Engine under systemd, configured with a TCP socket and `host-gateway-ip` at Windows; firewalls opened for 9562 and 9563; Windows' Docker CLI with buildx; Mesa for the headless viewer; `naoqi-sim fetch-and-build-images 2.1` from Windows; the live tier on Windows.
+1. The one-off workflow (kept local, not committed): WSL 2 with Docker Engine under systemd, configured with a TCP socket and `host-gateway-ip` at Windows; firewalls opened for 9562 and 9563; Windows' Docker CLI with buildx; Mesa for the headless viewer; `naoqi-sim fetch-and-build-images 2.1` from Windows; the live tier on Windows.
 2. Its first complete run: 48 passed, 6 skipped, 1 failed, 5 errors: a Windows path in a TOML string, SIGINT sent to `naoqi-sim run` (which did not stop on Ctrl-Break).
 3. The fixes, then the run again: 49 passed (the install test's venv was `Scripts\\` and it too sent SIGINT), 53 (its file list in backslashes), then **54 passed, 6 skipped** ([run 38405623737](https://github.com/funwithagents/naoqi-sim/actions/runs/38405623737)).
 4. Two faults the pull request's CI found, unrelated to Windows: a play returning before `playing_until` when its last tick was fed late (macOS runner), and 2.8's 3 s wait for a client's name falling short (live 2.8).
