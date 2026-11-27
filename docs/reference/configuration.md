@@ -2,7 +2,7 @@
 
 A config file describes the whole simulated robot in JSON: which NAOqi, which robot, how it is set up, and what your machine lends it for senses. `naoqi-sim run --config FILE` runs it, and `NaoqiSim.from_json_file(FILE)` does the same from Python.
 
-You rarely write one from nothing. `naoqi-sim config` prints the file of a set of options, with every field ([cli.md](cli.md#config)), and [examples/configs/](../../examples/configs/) has one per NAOqi version:
+You rarely write one from nothing. `naoqi-sim config` prints the file of a set of options, with every field ([cli.md](cli.md#config)), and [examples/configs/](../../examples/configs/) has one per NAOqi version, plus a short one for a CI job or a server:
 
 ```bash
 naoqi-sim config --naoqi 2.8 --viewer --mic > my-nao.json

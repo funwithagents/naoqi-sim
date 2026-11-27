@@ -24,7 +24,7 @@ from naoqi_sim.config import (
     ViewerSettings,
 )
 
-CI_CONFIG = Path(__file__).resolve().parent.parent / "tests-e2e" / "ci.json"
+CI_CONFIG = Path(__file__).resolve().parent.parent / "examples" / "configs" / "ci.json"
 
 
 def on(version: str, **blocks) -> dict:
@@ -309,11 +309,11 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
     ).audio_output.record == Path("a.wav")
 
 
-def test_the_live_tiers_settings_load():
-    # tests-e2e/ci.json: what the live tier runs each NAOqi version with (it adds the version).
-    data = json.loads(CI_CONFIG.read_text())
-    assert "naoqi" not in data
-    ci = load(data)
+def test_the_ci_example_needs_nothing_of_the_host():
+    # examples/configs/ci.json: no window, no loudspeaker, no microphone, no meshes; the cameras
+    # rendered so the robot still sees. Only what differs from the defaults is written.
+    ci = NaoqiSimConfig.from_json_file(CI_CONFIG)
+    assert ci.naoqi.version == "2.8" and ci.robot == RobotSettings("nao", "v6")
     assert ci.viewer == ViewerSettings(headless=True, variant="placeholder")
     assert ci.video_input.sources == {"top": "render", "bottom": "render"}
     assert ci.video_input.rates == {"top": 15, "bottom": 5}

@@ -40,7 +40,7 @@ Structure and tooling for the naoqi-sim project itself: Python version, dependen
   - `tests-e2e/` at repo root, for the live tier above — not collected by the default `pytest` run.
   - `docker/` — container recipes, one folder per container: `naoqi/` (the NAOqi image: Dockerfiles, entrypoints, healthcheck, and `services/<service>/`, the Python 2.7 and C++ code that runs inside NAOqi) and `tts-engine/` (the speech engine container), `compose.yaml` running both, and the gitignored `image-data/` for the user-supplied suite tarballs.
   - `docs/` — the user documentation the README links to; `CONTRIBUTING.md` — how the project is run and how to work in a checkout.
-  - `examples/configs/` — config files to read and to copy, one per NAOqi version, each the `naoqi-sim config` command's output with everything turned on ([config.md](runtime/config.md), "Example files").
+  - `examples/configs/` — config files to read and to copy: one per NAOqi version, each the `naoqi-sim config` command's output with everything turned on, and `ci.json` for a CI job or a server ([config.md](runtime/config.md), "Example files").
   - `.github/workflows/` — CI ([ci.md](testing/ci.md)), once built.
 - **No Aldebaran assets in git** (see [_overview.md](_overview.md), "Licensing"): `.gitignore` covers suite tarballs, `docker/image-data/`, meshes and textures. An automated asset guard is not built yet.
 

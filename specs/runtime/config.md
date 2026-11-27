@@ -4,7 +4,7 @@ code:
   - docker/compose.yaml
   - examples/configs/2.1.json
   - examples/configs/2.8.json
-  - tests-e2e/ci.json
+  - examples/configs/ci.json
 tests:
   - tests/test_config.py
   - tests/test_project_map.py
@@ -265,11 +265,11 @@ JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, a
 
 ### Example files
 
-`examples/configs/` holds two files to read and to copy, `2.1.json` and `2.8.json`: that NAOqi's default robot with everything a person usually turns on, every field of every block written out, so a file shows all there is to change. Each is exactly what `naoqi-sim config --naoqi <version> --viewer --webcam --mic --controls` prints ([cli.md](cli.md), "The `config` command"), which the fast tier checks, so they cannot drift from the config or from the command line: the window with both camera pictures and the people, speech on the loudspeaker, the robot hearing the host microphone, seeing the host's default webcam on its top camera and the render on its bottom one, and the controls opened in the browser. They need the `viewer` and `webcam` extras, and a camera and a microphone the terminal may use (macOS asks once).
+`examples/configs/` holds three files to read and to copy. Two are the full robot, `2.1.json` and `2.8.json`: that NAOqi's default robot with everything a person usually turns on, every field of every block written out, so a file shows all there is to change. Each is exactly what `naoqi-sim config --naoqi <version> --viewer --webcam --mic --controls` prints ([cli.md](cli.md), "The `config` command"), which the fast tier checks, so they cannot drift from the config or from the command line: the window with both camera pictures and the people, speech on the loudspeaker, the robot hearing the host microphone, seeing the host's default webcam on its top camera and the render on its bottom one, and the controls opened in the browser. They need the `viewer` and `webcam` extras, and a camera and a microphone the terminal may use (macOS asks once).
 
 A variation (Life on, more languages, another scene) is a copy with the fields changed, or the `config` command's output for other options, not a file of its own.
 
-`tests-e2e/ci.json` is the live tier's settings, next to the tests that use them: headless viewer with the placeholder variant, both cameras on `render` (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`; it names no NAOqi version: the live tier builds the same settings in code for each version it runs (`live_config`, `tests-e2e/conftest.py`), and the fast tier checks the file loads ([viewer.md](../host/viewer.md), "In the live tier and CI").
+`ci.json` is a robot for a CI job or a server, which needs nothing of the host: NAOqi 2.8, headless viewer with the placeholder variant (no meshes to install), both cameras on `render` so the robot still sees (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`. Unlike the other two it writes only what differs from the defaults, which shows that a file can be short. It is the live tier's own settings, which the live tier builds in code for each version it runs (`live_config`, `tests-e2e/conftest.py`; [viewer.md](../host/viewer.md), "In the live tier and CI"); the fast tier checks the file loads and says what it should.
 
 ## Open questions
 

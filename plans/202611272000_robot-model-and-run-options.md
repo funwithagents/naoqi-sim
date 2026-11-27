@@ -14,7 +14,7 @@ Implements [config.md](../specs/runtime/config.md) ("The robot", the `setup` blo
 - `docker/naoqi/entrypoint-lib.sh`, `entrypoint-2.1.sh`, `entrypoint-2.8.sh` — `robot_model`: the model preference pointed at the robot's file before NAOqi starts
 - `docker/naoqi/Dockerfile.naoqi-2.8` — the build-time model switch removed
 - `docker/naoqi/services/status-service/naoqi_sim_status_core.py` — the robot's keys published from the model file
-- `examples/configs/2.1.json`, `2.8.json` — the `config` command's output with everything on; `ci.json` moved to `tests-e2e/`
+- `examples/configs/2.1.json`, `2.8.json` — the `config` command's output with everything on; `ci.json` names its NAOqi version
 - `tests/test_config.py`, `test_cli.py`, `test_stack.py`, `test_entrypoint.py`, `test_status_core.py`, `test_sim.py`, `test_viewer.py` — functional tests for the above; the other fast tests and `tests-e2e/` follow the renamed blocks
 - `specs/`, `AGENTS.md` — the specs above, the key renames in the specs that quote them, the index, the project map
 

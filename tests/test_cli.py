@@ -240,7 +240,11 @@ def test_the_example_files_are_what_everything_turned_on_prints(version, capsys)
     everything = ["--viewer", "--webcam", "--mic", "--controls"]
     assert cli.main(["config", "--naoqi", version, *everything]) == 0
     assert capsys.readouterr().out == (EXAMPLES / f"{version}.json").read_text()
-    assert sorted(p.name for p in EXAMPLES.iterdir()) == ["2.1.json", "2.8.json"]
+    assert sorted(p.name for p in EXAMPLES.iterdir()) == [
+        "2.1.json",
+        "2.8.json",
+        "ci.json",
+    ]
 
 
 def test_config_prints_a_file_with_its_defaults_filled_in(tmp_path, capsys):

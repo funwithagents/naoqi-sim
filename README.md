@@ -106,7 +106,7 @@ naoqi-sim config --naoqi 2.8 --viewer --mic > my-nao.json   # every field, at it
 naoqi-sim run --config my-nao.json
 ```
 
-[examples/configs/](examples/configs/) has one such file per NAOqi version, and [docs/reference/configuration.md](docs/reference/configuration.md) describes every field.
+[examples/configs/](examples/configs/) has one such file per NAOqi version, and a short one for a CI job or a server (no window, no sound, no microphone), and [docs/reference/configuration.md](docs/reference/configuration.md) describes every field.
 
 ## Use it from Python
 

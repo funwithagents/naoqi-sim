@@ -114,7 +114,7 @@ Everything else is NAOqi's own API over `qi`: naoqi-sim adds no call for what a 
 
 ## In tests and CI
 
-- **Nothing of the host is needed**: `"audio_output": {"mode": "silent"}` (or a `MemorySink`), `"audio_input": {"source": "fake"}`, the default `"viewer": {"headless": true}`. The robot then runs on a server with no display, no loudspeaker and no microphone.
+- **Nothing of the host is needed** ([examples/configs/ci.json](../../examples/configs/ci.json) is such a config): `"audio_output": {"mode": "silent"}` (or a `MemorySink`), `"audio_input": {"source": "fake"}`, the default `"viewer": {"headless": true}`. The robot then runs on a server with no display, no loudspeaker and no microphone.
 - **Rendered cameras without a display** work too: a camera on `"render"` with `"viewer": {"headless": true, "variant": "placeholder"}`, which asks for no meshes.
 - **Start the robot once per test session**, not per test: a start takes tens of seconds (NAOqi itself boots in about 5 seconds on 2.1 and 15 on 2.8, then the engines load), more on a CI runner.
 - **Real time**: the robot speaks, moves and listens at the speed of a real one. Wait for NAOqi's events rather than sleeping.
