@@ -26,7 +26,7 @@ from naoqi_sim.audio_output import (
     WavSink,
 )
 from naoqi_sim.config import NaoqiSettings, NaoqiSimConfig, NaoqiVersion
-from naoqi_sim.controls import Controls, stop_activity_gesture
+from naoqi_sim.controls import Controls, Robot, stop_activity_gesture
 from naoqi_sim.errors import CameraNotFedError, NaoqiSimError, NotRunningError
 from naoqi_sim.host_link import HostLink
 from naoqi_sim.stack import (
@@ -434,7 +434,11 @@ class NaoqiSim:
         settings = self._config.controls
         assert self._touch is not None
         controls = Controls(
-            settings.port, self._config.naoqi.version, self._touch, self._video_input
+            settings.port,
+            self._config.naoqi.version,
+            self._touch,
+            self._video_input,
+            robot=Robot(),  # the robot's buttons, relayed to NAOqi on a session of its own
         )
         # Registered last, so the teardown stops it first and its holds are released.
         self._undo.append(("controls", self._stop_controls))
