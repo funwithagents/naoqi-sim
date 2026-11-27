@@ -4,6 +4,7 @@ holds released at stop, the page, and each version's stop gesture."""
 
 import http.client
 import json
+import threading
 from typing import Any
 
 import pytest
@@ -279,3 +280,224 @@ def test_the_gesture_over_http(server, memory):
         (KEY.format("Head/Touch/Front"), 1.0),
         (KEY.format("Head/Touch/Front"), 0.0),
     ]
+
+
+# --- The robot's buttons, relayed to NAOqi ---------------------------------------------------
+
+
+class FakeRobot:
+    """ALMotion, ALRobotPosture and ALAutonomousLife as the sim measured them (controls.md,
+    "The robot"): a posture with the stiffness off wakes the robot, Life on wakes it and
+    stands it up, Life off rests it. `hold` keeps the next posture running until set."""
+
+    def __init__(self):
+        self.stiffness = [0.0] * 26
+        self.posture = "Crouch"
+        self.life = "disabled"
+        self.calls: list[str] = []
+        self.hold = threading.Event()
+        self.hold.set()
+        self.started = threading.Event()
+        self.refuse = False
+        self.closed = False
+
+    def service(self, name: str):
+        return self
+
+    def close(self):
+        self.closed = True
+
+    # ALMotion
+    def robotIsWakeUp(self):
+        return min(self.stiffness) > 0
+
+    def getStiffnesses(self, names):
+        return list(self.stiffness)
+
+    def setStiffnesses(self, names, value):
+        self.calls.append(f"setStiffnesses {value}")
+        self.stiffness = [value] * len(self.stiffness)
+
+    def wakeUp(self):
+        self.calls.append("wakeUp")
+        self.setStiffnesses("Body", 1.0)
+        if self.posture == "Crouch":
+            self.posture = "Stand"
+
+    def rest(self):
+        self.calls.append("rest")
+        self.posture = "Crouch"
+        self.setStiffnesses("Body", 0.0)
+
+    # ALRobotPosture
+    def getPosture(self):
+        return self.posture
+
+    def goToPosture(self, posture, speed):
+        self.calls.append(f"goToPosture {posture} {speed}")
+        self.started.set()
+        self.hold.wait(5)
+        if self.refuse:
+            return False
+        self.setStiffnesses("Body", 1.0)
+        self.posture = posture
+        return True
+
+    # ALAutonomousLife
+    def getState(self):
+        return self.life
+
+    def focusedActivity(self):
+        return ""
+
+    def setState(self, state):
+        self.calls.append(f"setState {state}")
+        self.life = state
+        if state == "solitary":
+            self.wakeUp()
+        else:
+            self.rest()
+
+
+@pytest.fixture
+def robot():
+    return FakeRobot()
+
+
+@pytest.fixture
+def robot_server(touch, video, robot):
+    controls = Controls(
+        free_port(), "2.8", touch, video, robot=controls_module.Robot(lambda: robot)
+    )
+    controls.start()
+    yield controls
+    controls.stop()
+
+
+def test_the_robot_state_is_naoqis(robot_server, robot):
+    status, state = request(robot_server, "GET", "/api/state")
+    assert status == 200
+    assert state["robot"] == {
+        "awake": False,
+        "stiffness": [0.0, 0.0],
+        "posture": "Crouch",
+        "life": "disabled",
+        "focus": "",
+        "running": None,
+    }
+    robot.stiffness[3] = 0.6  # a qi client stiffened one joint: partial
+    assert request(robot_server, "GET", "/api/state")[1]["robot"]["stiffness"] == [
+        0.0,
+        0.6,
+    ]
+
+
+def test_each_robot_button_is_its_naoqi_call(robot_server, robot):
+    def post(path, body):
+        status, state = request(robot_server, "POST", f"/api/robot/{path}", body)
+        assert status == 200, state
+        return state["robot"]
+
+    assert post("posture", {"posture": "Stand"})["posture"] == "Stand"
+    assert post("stiffness", {"on": False})["awake"] is False
+    assert post("stiffness", {"on": True})["stiffness"] == [1.0, 1.0]
+    assert post("motors", {"action": "rest"})["posture"] == "Crouch"
+    assert post("motors", {"action": "wake_up"})["awake"] is True
+    assert post("life", {"on": True})["life"] == "solitary"
+    off = post("life", {"on": False})
+    assert (off["life"], off["posture"], off["awake"]) == ("disabled", "Crouch", False)
+    assert robot.calls == [
+        "goToPosture Stand 0.8",
+        "setStiffnesses 1.0",
+        "setStiffnesses 0.0",
+        "setStiffnesses 1.0",
+        "rest",
+        "setStiffnesses 0.0",
+        "wakeUp",
+        "setStiffnesses 1.0",
+        "setState solitary",
+        "wakeUp",
+        "setStiffnesses 1.0",
+        "setState disabled",
+        "rest",
+        "setStiffnesses 0.0",
+    ]
+
+
+def test_one_robot_action_at_a_time(robot_server, robot):
+    robot.hold.clear()  # the posture keeps running
+    answers: list[tuple[int, Any]] = []
+    first = threading.Thread(
+        target=lambda: answers.append(
+            request(robot_server, "POST", "/api/robot/posture", {"posture": "Sit"})
+        )
+    )
+    first.start()
+    assert robot.started.wait(5)
+    assert request(robot_server, "GET", "/api/state")[1]["robot"]["running"] == "Sit"
+    status, answer = request(
+        robot_server, "POST", "/api/robot/motors", {"action": "rest"}
+    )
+    assert (status, answer) == (409, {"error": "Sit is running"})
+    robot.hold.set()
+    first.join(5)
+    assert answers[0][0] == 200 and answers[0][1]["robot"]["posture"] == "Sit"
+    assert "rest" not in robot.calls  # refused, never sent to NAOqi
+    assert request(robot_server, "GET", "/api/state")[1]["robot"]["running"] is None
+
+
+def test_naoqis_refusals_are_shown_not_guessed(robot_server, robot):
+    robot.refuse = True
+    status, answer = request(
+        robot_server, "POST", "/api/robot/posture", {"posture": "Sit"}
+    )
+    assert (status, answer) == (
+        409,
+        {"error": 'NAOqi answered False to goToPosture("Sit")'},
+    )
+
+    def broken(state):
+        raise RuntimeError("ALAutonomousLife::setState\tInvalid state transition")
+
+    robot.setState = broken
+    status, answer = request(robot_server, "POST", "/api/robot/life", {"on": True})
+    assert status == 500 and "Invalid state transition" in answer["error"]
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "error"),
+    [
+        (
+            "posture",
+            {"posture": "LyingBack"},
+            "posture must be one of Stand, StandInit, Sit, Crouch",
+        ),
+        ("motors", {"action": "sleep"}, 'action must be "wake_up" or "rest"'),
+        ("stiffness", {"on": 1}, "on must be true or false"),
+        ("life", {}, "on must be true or false"),
+    ],
+)
+def test_a_bad_robot_request_is_400(robot_server, robot, path, body, error):
+    status, answer = request(robot_server, "POST", f"/api/robot/{path}", body)
+    assert (status, answer) == (400, {"error": error})
+    assert robot.calls == []
+
+
+def test_naoqi_not_answering_leaves_the_rest_of_the_page(robot_server, robot):
+    def dead(names):
+        raise RuntimeError("the session is closed")
+
+    robot.getStiffnesses = dead
+    status, state = request(robot_server, "GET", "/api/state")
+    assert status == 200
+    assert state["robot"] == {"error": "the session is closed", "running": None}
+    assert state["touch"] == {"pressed": [], "held": []}
+
+
+def test_the_robot_session_closes_with_the_server(touch, video, robot):
+    controls = Controls(
+        free_port(), "2.8", touch, video, robot=controls_module.Robot(lambda: robot)
+    )
+    controls.start()
+    controls.stop()
+    assert robot.closed

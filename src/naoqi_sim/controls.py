@@ -17,6 +17,7 @@ from importlib import resources
 from typing import Any
 from urllib.parse import urlsplit
 
+from naoqi_sim import stack
 from naoqi_sim.config import NaoqiVersion
 from naoqi_sim.errors import CameraNotFedError
 from naoqi_sim.touch_input import TouchInput, resolve
@@ -85,6 +86,116 @@ class RequestError(Exception):
         self.message = message
 
 
+# The robot's buttons (specs/host/controls.md, "The robot"): NAOqi calls any qi client makes,
+# relayed because a browser cannot speak qi; the controls own nothing of it.
+POSTURES = ("Stand", "StandInit", "Sit", "Crouch")
+POSTURE_SPEED = 0.8
+
+
+class Robot:
+    """The robot's state as NAOqi reports it, and the actions the page asks of NAOqi, one at a
+    time, on a qi session of the controls' own."""
+
+    def __init__(self, connect: Callable[[], Any] | None = None):
+        self._connect = connect or (lambda: stack.connect())
+        self._session: Any = None
+        self._action = threading.Lock()
+        self.running: str | None = None
+
+    def start(self) -> None:
+        self._session = self._connect()
+
+    def stop(self) -> None:
+        session, self._session = self._session, None
+        if session is not None:
+            session.close()
+
+    def _service(self, name: str) -> Any:
+        if self._session is None:
+            raise RuntimeError("the controls' NAOqi session is not open")
+        return self._session.service(name)
+
+    def state(self) -> dict[str, Any]:
+        try:
+            motion = self._service("ALMotion")
+            life = self._service("ALAutonomousLife")
+            stiffness = list(motion.getStiffnesses("Body"))
+            return {
+                "awake": bool(motion.robotIsWakeUp()),
+                "stiffness": [min(stiffness), max(stiffness)] if stiffness else None,
+                "posture": self._service("ALRobotPosture").getPosture(),
+                "life": life.getState(),
+                "focus": life.focusedActivity(),
+                "running": self.running,
+            }
+        except Exception as e:  # noqa: BLE001 (NAOqi not answering: the page says so)
+            return {"error": str(e), "running": self.running}
+
+    def act(self, name: str, call: Callable[[], Any]) -> Any:
+        """Runs one action; 409 while another runs, rather than two motions competing."""
+        if not self._action.acquire(blocking=False):
+            raise RequestError(HTTPStatus.CONFLICT, f"{self.running} is running")
+        self.running = name
+        try:
+            return call()
+        finally:
+            self.running = None
+            self._action.release()
+
+    def post(self, what: str, body: dict[str, Any]) -> None:
+        match what:
+            case "motors":
+                action = body.get("action")
+                if action == "wake_up":
+                    self.act("Wake up", self._service("ALMotion").wakeUp)
+                elif action == "rest":
+                    self.act("Rest", self._service("ALMotion").rest)
+                else:
+                    raise RequestError(
+                        HTTPStatus.BAD_REQUEST, 'action must be "wake_up" or "rest"'
+                    )
+            case "stiffness":
+                on = _flag(body, "on")
+                motion = self._service("ALMotion")
+                self.act(
+                    f"Stiffness {'on' if on else 'off'}",
+                    lambda: motion.setStiffnesses("Body", 1.0 if on else 0.0),
+                )
+            case "posture":
+                posture = body.get("posture")
+                if posture not in POSTURES:
+                    raise RequestError(
+                        HTTPStatus.BAD_REQUEST,
+                        f"posture must be one of {', '.join(POSTURES)}",
+                    )
+                service = self._service("ALRobotPosture")
+                if not self.act(
+                    posture, lambda: service.goToPosture(posture, POSTURE_SPEED)
+                ):
+                    raise RequestError(
+                        HTTPStatus.CONFLICT,
+                        f'NAOqi answered False to goToPosture("{posture}")',
+                    )
+            case "life":
+                on = _flag(body, "on")
+                life = self._service("ALAutonomousLife")
+                self.act(
+                    f"Life {'on' if on else 'off'}",
+                    lambda: life.setState("solitary" if on else "disabled"),
+                )
+            case _:
+                raise RequestError(
+                    HTTPStatus.NOT_FOUND, f"no such request: /api/robot/{what}"
+                )
+
+
+def _flag(body: dict[str, Any], key: str) -> bool:
+    value = body.get(key)
+    if not isinstance(value, bool):
+        raise RequestError(HTTPStatus.BAD_REQUEST, f"{key} must be true or false")
+    return value
+
+
 def page() -> bytes:
     """The controls page, shipped as package data."""
     return (resources.files("naoqi_sim") / "controls.html").read_bytes()
@@ -100,11 +211,13 @@ class Controls:
         touch: TouchInput,
         video: VideoInput | None,
         sleep: Callable[[float], None] = time.sleep,
+        robot: Robot | None = None,
     ):
         self.port = port
         self.version: NaoqiVersion = version
         self.touch = touch
         self.video = video
+        self.robot = robot
         self.sleep = sleep
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -115,6 +228,8 @@ class Controls:
         return f"http://{HOST}:{self.port}/"
 
     def start(self) -> None:
+        if self.robot is not None:
+            self.robot.start()
         self._server = ThreadingHTTPServer((HOST, self.port), self._handler())
         self._server.daemon_threads = True
         self._thread = threading.Thread(
@@ -138,13 +253,15 @@ class Controls:
             self.touch.release(HOLDER)
         except RuntimeError:  # the touch input already stopped, releasing everything
             pass
+        if self.robot is not None:
+            self.robot.stop()
 
     # --- What each request does --------------------------------------------------------
 
     def state(self) -> dict[str, Any]:
         covered = self.video.covered() if self.video is not None else {}
         fed = self.video.fed if self.video is not None else ()
-        return {
+        state: dict[str, Any] = {
             "naoqi_version": self.version,
             "touch": {
                 "pressed": self.touch.pressed(),
@@ -155,6 +272,9 @@ class Controls:
                 for camera in CAMERAS
             },
         }
+        if self.robot is not None:
+            state["robot"] = self.robot.state()
+        return state
 
     def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         parts = path.strip("/").split("/")
@@ -203,6 +323,8 @@ class Controls:
                     )
             case ["api", "gestures", name]:
                 raise RequestError(HTTPStatus.BAD_REQUEST, f"unknown gesture {name!r}")
+            case ["api", "robot", what] if self.robot is not None:
+                self.robot.post(what, body)
             case _:
                 raise RequestError(HTTPStatus.NOT_FOUND, f"no such request: {path}")
         return self.state()
