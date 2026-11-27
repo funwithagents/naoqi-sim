@@ -36,7 +36,9 @@ def only_on_2_8(nao) -> None:
 def robot_service(nao, tmp_path):
     """Our service package installed; removed after the test, its service stopped first."""
     pm = nao.service("PackageManager")
-    if pm.hasPackage(SERVICE_PACKAGE):  # left by an interrupted run: the volume keeps it
+    if pm.hasPackage(
+        SERVICE_PACKAGE
+    ):  # left by an interrupted run: the volume keeps it
         nao.service("ALServiceManager").stopService(SERVICE)
         pm.removePkg(SERVICE_PACKAGE)
     nao.container.copy_in(
