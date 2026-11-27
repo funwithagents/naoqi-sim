@@ -39,18 +39,34 @@ Docker (Docker Desktop on macOS and Windows; Windows is not tested end to end ye
 ```bash
 uv sync --dev
 uv run naoqi-sim fetch-and-build-images   # fetch, build and verify the 2.1 and 2.8 images (or: 2.1 / 2.8); rerun after changing docker/
-uv run naoqi-sim run                      # NAOqi 2.1 with the sim window, speech on the loudspeaker; Ctrl-C stops it
-uv run naoqi-sim run --config examples/configs/2.8.json       # or NAOqi 2.8; headless.json: no window, silent
-uv run naoqi-sim run --config examples/configs/mic.json       # the robot hears through your microphone
-uv run naoqi-sim run --config examples/configs/webcam.json    # its top camera sees through your webcam (macOS: Camera access for the terminal)
-# A webcam does not turn with the head: the robot detects you and the people markers are right, but
-# ALBasicAwareness keeps turning the head while you stay off-centre. Check head tracking with the
-# render camera and face props (specs/host/video-input.md, "The webcam source").
-uv run naoqi-sim run --config examples/configs/languages.json # English, French and German installed, French at boot (German's voice and model fetched once)
+uv run naoqi-sim run --config examples/configs/2.1.json   # NAOqi 2.1, the window, your mic, your webcam, the controls page; Ctrl-C stops it
+uv run naoqi-sim run --config examples/configs/2.8.json   # or NAOqi 2.8
+uv run naoqi-sim run                      # no config: the same without the microphone, the cameras and the controls
 uv run naoqi-sim status                   # from another terminal: the containers and the robot's state
 uv run naoqi-sim logs --follow            # the containers' logs
 uv run naoqi-sim cleanup                  # after a run that died without stopping
 ```
+
+`examples/configs/2.1.json` and `2.8.json` are the basic use, every block written out: the window,
+with what the robot's cameras see and the people it perceives; speech on the loudspeaker; the robot
+hearing your microphone, seeing you through your webcam on its top camera (macOS: Camera access for
+the terminal) and the rendered scene on its bottom one; and the controls page opened in your
+browser, to drive its motors, posture and Life, touch it, cover its camera and stop an activity.
+Copy one and change what you need (specs/runtime/config.md). For example:
+
+- `viewer.headless` true, `audio_output.mode` `"silent"`, `audio_input.source` and both cameras'
+  `source` `"none"`, `controls.enabled` false: no window, no sound, no inputs, no page, no `viewer`
+  extra needed (servers);
+- `video_input.top.source` `"render"`: the rendered scene on the top camera too, with no camera
+  needed. A webcam does not turn with the head: the robot detects you, but ALBasicAwareness keeps
+  turning the head while you stay off-centre. Check head tracking with the `render` source and
+  face props (specs/host/video-input.md, "The webcam source");
+- `robot.available_languages` and `robot.language`: more languages installed, another one at boot
+  (a new language's voice and model are fetched once);
+- `robot.posture` `"stand"`, `stiffness_on` and `life_on` true: Autonomous Life on, as a NAO
+  whose Life starts at boot.
+
+`examples/configs/ci.json` holds the live tier's settings.
 
 Then connect any qi client to `tcp://127.0.0.1:9559`, as to a NAO. The `NaoqiSim` service tells a client it is on naoqi-sim (`getVersion`, `getNaoqiVersion`, `isReady`; `NaoqiSim/*` keys in ALMemory): it reports the naoqi-sim version the images were built with. The compose project is `naoqi-sim`, so the package store volumes are `naoqi-sim_packages-2.1` and `naoqi-sim_packages-2.8`.
 

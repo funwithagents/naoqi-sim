@@ -2,15 +2,9 @@
 code:
   - src/naoqi_sim/config.py
   - docker/compose.yaml
-  - examples/configs/default.json
+  - examples/configs/2.1.json
   - examples/configs/2.8.json
-  - examples/configs/headless.json
   - examples/configs/ci.json
-  - examples/configs/mic.json
-  - examples/configs/webcam.json
-  - examples/configs/languages.json
-  - examples/configs/life.json
-  - examples/configs/controls.json
 tests:
   - tests/test_config.py
   - tests/test_project_map.py
@@ -239,16 +233,11 @@ JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, a
 
 ### Example files
 
-`examples/configs/` holds ready-to-use files, kept in sync with this spec:
+`examples/configs/` holds ready-to-use files, kept in sync with this spec: the sim's basic use, one file per version, to copy and change, and the live tier's settings. A variation (no window, a webcam, Life on, more languages) is a copy of a basic file with the fields changed, not a file of its own.
 
-- `default.json`: 2.1, window, speech only;
+- `2.1.json`: every block written out, so the file shows every block there is: the window with both camera pictures and the people (`viewer.cameras_display` and `people_display`), speech on the loudspeaker, the robot hearing the host microphone (`audio_input.source = "mic"`), seeing the host's default webcam on its top camera and the render on its bottom one, and the controls on and opened in the browser ([controls.md](../host/controls.md)); every other field at its default. It needs the `viewer` and `webcam` extras, which the checkout's dev environment installs, and a camera the application may use (macOS asks once). It differs from `NaoqiSimConfig()` (no input, no display, no controls, so that a program or a server gets no microphone, no camera and no web page it did not ask for) by those only;
 - `2.8.json`: the same on 2.8;
-- `headless.json`: 2.1, no window, silent audio output (servers);
-- `controls.json`: 2.1, window, both cameras on `render` (the bottom one at 5 fps), the controls on and opened in the browser: a person touching the robot, covering its camera, and doing the gesture that stops an activity;
-- `ci.json`: 2.1, headless viewer with the placeholder variant, both cameras on `render` (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
-- `life.json`: 2.1, window, the robot standing with Autonomous Life on when the sim is ready, as a NAO whose Life starts at boot;
-- `mic.json`: 2.1, window, speech on the loudspeaker, `audio_input.source = "mic"`: the robot hears the room, its own voice included, as a NAO does;
-- `webcam.json`: 2.1, window, the host's default webcam (`device` 0) on the top camera and the render on the bottom one: the robot sees the room through its top camera, and the `mixed` summary shows; `viewer.cameras_display` on, so the window shows both cameras as `ALVideoDevice` serves them; needs the `webcam` and `viewer` extras.
+- `ci.json`: 2.1, headless viewer with the placeholder variant, both cameras on `render` (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI").
 
 ## Open questions
 

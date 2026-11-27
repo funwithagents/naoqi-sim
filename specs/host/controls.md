@@ -51,7 +51,7 @@ Decided Nov 25, 2026; the block's name, `controls`, is the user's.
 | `port` | `9564` | The port, on `127.0.0.1` only |
 | `open` | `false` | Open the page in the default browser once the robot is ready |
 
-- The block is [config.md](../runtime/config.md)'s; `examples/configs/controls.json` turns it on, with both cameras rendered so the top one can be covered. `naoqi-sim run` does not turn it on by itself (decided Nov 27, 2026): off stays the default everywhere.
+- The block is [config.md](../runtime/config.md)'s; the example files `2.1.json` and `2.8.json` turn it on and open the page, with both cameras fed (the webcam on the top one, the render on the bottom one) so either can be covered. `naoqi-sim run` does not turn it on by itself (decided Nov 27, 2026): off stays the default everywhere.
 - `NaoqiSim.start()` checks the port is free with the others (step 1), starts the server after the input devices (step 7) and logs the page's address, which `naoqi-sim run` prints too; `stop()` stops it first and releases what it holds. `NaoqiSim.controls_url` is the address, `None` when the block is off.
 
 ### The page
@@ -128,7 +128,7 @@ A covered camera sees what a hand over it gives, whatever feeds the camera: the 
 
 ### Specs this work changed
 
-[config.md](../runtime/config.md) (the `controls` block, `controls.json`), [api.md](../runtime/api.md) (`sim.touch`, `cover_camera`, `stop_activity_gesture`, `controls_url`, `CameraNotFedError`, the lifecycle steps), [video-input.md](video-input.md) (the cover), [devices.md](devices.md) (the touch input's row; the controls are not a device), [cli.md](../runtime/cli.md) (`run` prints the address).
+[config.md](../runtime/config.md) (the `controls` block), [api.md](../runtime/api.md) (`sim.touch`, `cover_camera`, `stop_activity_gesture`, `controls_url`, `CameraNotFedError`, the lifecycle steps), [video-input.md](video-input.md) (the cover), [devices.md](devices.md) (the touch input's row; the controls are not a device), [cli.md](../runtime/cli.md) (`run` prints the address).
 
 ### Tests
 
