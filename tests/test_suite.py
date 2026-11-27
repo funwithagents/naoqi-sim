@@ -1,9 +1,11 @@
 import bz2
 import gzip
 import hashlib
+import io
 import json
 import re
 import threading
+import zipfile
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,8 +16,10 @@ import pytest
 from naoqi_sim import suite
 from naoqi_sim.errors import FetchError
 from naoqi_sim.suite import (
+    LIFE_CONFIG,
     PACKAGE,
     VERSIONS,
+    PackagedFile,
     PinnedFile,
     Version,
     fetch,
@@ -264,6 +268,91 @@ def test_rejects_an_extracted_package_with_the_wrong_hash(origin, tmp_path):
     assert sorted(p.name for p in (tmp_path / "2.1").iterdir()) == ["suite.tar.gz"]
 
 
+CONFIG = b"[Interactive]\nCondition: 'Launchpad/NumPeopleZone1' > 0\n"
+LIFE_MEMBER = "etc/naoqi/autonomy-nao-romeo.cfg"
+
+
+def zipped(files: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for name, body in files.items():
+            z.writestr(name, body)
+    return buf.getvalue()
+
+
+LIFE_PKG = zipped({"manifest.xml": b"<package/>", LIFE_MEMBER: CONFIG})
+
+
+class PathCat:
+    """Stands in for debugfs in Docker, answering by path; records what was read."""
+
+    def __init__(self, files: dict[str, bytes]):
+        self.files = files
+        self.read: list[str] = []
+
+    def __call__(self, rootfs: Iterable[bytes], path: str) -> Iterable[bytes]:
+        self.read.append(path)
+        return [self.files[path]]
+
+
+def with_life(origin: Origin, member: str = LIFE_MEMBER, package: bytes = LIFE_PKG):
+    return replace(
+        version(origin),
+        life_config=PackagedFile("/apps/life.pkg", sha(package), member, sha(CONFIG)),
+    )
+
+
+def robot_files(package: bytes = LIFE_PKG) -> PathCat:
+    return PathCat(
+        {"/usr/share/naoqi/apps/animations.pkg": PKG, "/apps/life.pkg": package}
+    )
+
+
+def test_extracts_a_naos_life_configuration_from_the_robot_images_life_package(
+    origin, tmp_path
+):
+    cat = robot_files()
+    folder = fetch(with_life(origin), tmp_path, cat)
+    assert (folder / LIFE_CONFIG).read_bytes() == CONFIG
+    assert (folder / PACKAGE).read_bytes() == PKG
+    assert sorted(p.name for p in folder.iterdir()) == [
+        PACKAGE,
+        LIFE_CONFIG,
+        "suite.tar.gz",
+    ]
+    assert origin.requests.count("/nao%20image.opn") == 1  # one download for both files
+    fetch(with_life(origin), tmp_path, cat)
+    assert len(origin.requests) == 2 and len(cat.read) == 2  # kept, nothing read again
+
+
+def test_only_the_missing_file_is_extracted_again(origin, tmp_path):
+    cat = robot_files()
+    fetch(with_life(origin), tmp_path, cat)
+    (tmp_path / "2.1" / LIFE_CONFIG).unlink()
+    fetch(with_life(origin), tmp_path, cat)
+    assert cat.read == [
+        "/usr/share/naoqi/apps/animations.pkg",
+        "/apps/life.pkg",
+        "/apps/life.pkg",
+    ]
+    assert (tmp_path / "2.1" / LIFE_CONFIG).read_bytes() == CONFIG
+
+
+def test_rejects_a_life_package_with_the_wrong_hash(origin, tmp_path):
+    other = zipped({LIFE_MEMBER: CONFIG, "more": b"another release"})
+    with pytest.raises(FetchError, match="life.pkg.*SHA-256"):
+        fetch(with_life(origin), tmp_path, robot_files(package=other))
+    assert not (tmp_path / "2.1" / LIFE_CONFIG).exists()
+
+
+def test_rejects_a_life_package_without_the_configuration(origin, tmp_path):
+    with pytest.raises(FetchError, match="no etc/naoqi/missing.cfg"):
+        fetch(
+            with_life(origin, member="etc/naoqi/missing.cfg"), tmp_path, robot_files()
+        )
+    assert not (tmp_path / "2.1" / LIFE_CONFIG).exists()
+
+
 def test_rejects_a_download_with_the_wrong_hash(origin, tmp_path):
     with pytest.raises(FetchError, match="SHA-256"):
         fetch(version(origin, suite_body=b"something else"), tmp_path, echo_cat)
@@ -294,6 +383,9 @@ def test_the_dockerfile_builds_from_the_fetched_files(name):
         f"COPY --from=image-data {PACKAGE} /opt/naoqi/share/naoqi/apps/{PACKAGE}"
         in dockerfile
     )
+    # 2.8's Life reads a NAO's configuration where Life looks first (autonomous-life.md).
+    life = f"COPY --from=image-data --chown=1000:1000 {LIFE_CONFIG} /home/nao/.config/naoqi/{LIFE_CONFIG}"
+    assert (life in dockerfile) == (v.life_config is not None) == (name == "2.8")
     compose = (DOCKER / "compose.yaml").read_text()
     assert f"image-data: ${{NAOQI_SIM_IMAGE_DATA:-./image-data}}/{name}\n" in compose
     for f in (v.suite, v.image):

@@ -79,11 +79,15 @@ def services(config: NaoqiSimConfig) -> list[str]:
 
 def compose_env(config: NaoqiSimConfig) -> dict[str, str]:
     """The environment every compose call of a run gets, from the config: the installed
-    languages, and the perception and speech recognition engines' URLs, each empty when its
+    languages, the robot's state at boot, and the perception and speech recognition engines' URLs, each empty when its
     engine is off so the NAOqi modules reach none (compose keeps an empty value as is)."""
     return {
         **files.compose_env(),
         "NAOQI_SIM_LANGUAGES": ",".join(config.speech.languages),
+        # The robot's state when the sim is ready, which the NAOqi entrypoint brings it to.
+        "NAOQI_SIM_ROBOT_POSTURE": config.robot.posture,
+        "NAOQI_SIM_ROBOT_STIFFNESS": "on" if config.robot.stiffness_on else "off",
+        "NAOQI_SIM_ROBOT_LIFE": "on" if config.robot.life_on else "off",
         "NAOQI_SIM_PERCEPTION_URL": docker_images.PERCEPTION_URL
         if config.perception.enabled
         else "",

@@ -6,10 +6,10 @@ list is a normal boot's plus ALFaceDetection."""
 
 import math
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 
 import pytest
-from support import known_issue
+from support import wait_until
 
 WORLD = 1  # ALMotion's FRAME_WORLD
 TOP_CAMERA = "CameraTop"
@@ -32,15 +32,6 @@ STUBS = {
         "_UserIdentification",
     ],
 }
-
-
-def wait_until(check: Callable[[], bool], timeout: float, what: str) -> None:
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if check():
-            return
-        time.sleep(0.1)
-    pytest.fail(f"{what} within {timeout} s")
 
 
 class Events:
@@ -396,15 +387,10 @@ def test_the_service_list_is_a_naos_plus_face_detection(nao):
         } <= names
 
 
-def test_life_opens_a_user_session_on_a_tracked_face(request, nao, standing):
-    """2.8: Autonomous Life in solitary identifies the tracked person through the typed
-    _UserIdentification stub and opens a session on them; 2.1's desktop life refuses setState."""
-    known_issue(
-        request,
-        nao,
-        "ALAutonomousLife.setState is refused on the 2.1 desktop suite",
-        versions=("2.1",),
-    )
+def test_life_opens_a_user_session_on_a_tracked_face(nao, standing):
+    """Autonomous Life in solitary opens a user session on the tracked person, on both versions
+    (2.1's setState allowed by the entrypoint); 2.8 identifies them through the typed
+    _UserIdentification stub."""
     life = nao.service("ALAutonomousLife")
     sessions = nao.service("ALUserSession")
     # Through disabled first: an earlier test may have left life on, and entering solitary again is
@@ -416,9 +402,10 @@ def test_life_opens_a_user_session_on_a_tracked_face(request, nao, standing):
     try:
         wait_until(lambda: sessions.getFocusedUser() != -1, 15.0, "a user session")
         assert sessions.getOpenUserSessions() == [sessions.getFocusedUser()]
-        ident = nao.service("_UserIdentification")
-        # earlier tests ran life too: their faces were stored as users
-        assert sessions.getFocusedUser() in ident.getStoredUsers()
+        if nao.version.name == "2.8":
+            ident = nao.service("_UserIdentification")
+            # earlier tests ran life too: their faces were stored as users
+            assert sessions.getFocusedUser() in ident.getStoredUsers()
     finally:
         life.setState("disabled")
         nao.sim.props.despawn(state.name)

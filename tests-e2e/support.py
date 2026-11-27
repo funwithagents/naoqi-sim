@@ -17,6 +17,7 @@ import socket
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
@@ -207,6 +208,16 @@ class Listener:
 
 # Where the known issues the live tests mark are documented.
 DESKTOP_FACTS = "specs/container/naoqi-fidelity.md, 'Desktop NAOqi facts'"
+
+
+def wait_until(check: Callable[[], bool], timeout: float, what: str) -> None:
+    """Polls `check` every 0.1 s; fails the test with `what` if it is not true in `timeout` s."""
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if check():
+            return
+        time.sleep(0.1)
+    pytest.fail(f"{what} within {timeout} s")
 
 
 def known_issue(request, nao, reason: str, versions=("2.1", "2.8")) -> None:

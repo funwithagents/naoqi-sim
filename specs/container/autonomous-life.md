@@ -3,15 +3,26 @@ code:
   - docker/naoqi/services/autonomous-life/naoqi_sim_life_qiservice.py
   - docker/naoqi/entrypoint-2.8.sh
   - docker/naoqi/entrypoint-lib.sh
+  - docker/naoqi/entrypoint-2.1.sh
+  - docker/naoqi/Dockerfile.naoqi-2.8
+  - src/naoqi_sim/suite.py
+  - src/naoqi_sim/config.py
+  - src/naoqi_sim/stack.py
+  - docker/compose.yaml
 tests:
   - tests/test_entrypoint.py
+  - tests/test_suite.py
+  - tests-e2e/test_boot_live.py
+  - tests-e2e/test_life_live.py
+  - tests-e2e/test_robot_state_live.py
+  - tests/test_config.py
 ---
 
 # Autonomous Life and the main dialog
 
 **Status:** Draft
 
-Decisions of Nov 25, 2026, on the surveys of Nov 20 and 21 (trail in `spike/RESULTS.md`, from "Life and the dialog on 2.8" on; a real NAO 2.1 measured Nov 21). The boot state and the whole chain were measured on both sims on Nov 25, 2026; the open questions are deferrals. No plan yet.
+Decisions of Nov 25, 2026, on the surveys of Nov 20 and 21 (trail in `spike/RESULTS.md`, from "Life and the dialog on 2.8" on; a real NAO 2.1 measured Nov 21). The boot state and the whole chain were measured on both sims on Nov 25, 2026; the open questions are deferrals. Built so far (Nov 25, 2026): the boot state on both versions, 2.1's `setState`, and a NAO's Life configuration on 2.8; the rest has no plan yet.
 
 ## Purpose
 
@@ -21,28 +32,46 @@ This spec says what naoqi-sim's images provide so that **Life and its main dialo
 
 ## Decided
 
-### The sim boots with Life off, at rest
+### The state at boot
 
-On both versions, when the sim is ready:
+The config's `robot` block ([config.md](../runtime/config.md)) says what state the robot is in when the sim is ready: its posture, whether its stiffness is on (all joints, as after `wakeUp()`) or off (as after `rest()`), whether Life runs (user, Nov 25, 2026; the fields `posture`, `stiffness_on`, `life_on`). Only the states a NAO can be in are accepted:
+
+| `posture` | `stiffness_on` | `life_on` | When ready | Versions |
+|---|---|---|---|---|
+| `crouch` | false | false | **The default**, below | both |
+| `crouch` | true | false | Crouched, stiff | both |
+| `stand` | true | false | Standing, as after `wakeUp()` | both |
+| `stand` | true | true | Life `solitary`, standing | both |
+| `sit` | false | false | Sitting, the stiffness off | 2.1 |
+| `sit` | true | false | Sitting, stiff | 2.1 |
+| `sit` | true | true | Life `solitary`, sitting | 2.1 |
+
+- **Refused at load**, with a `ConfigError` saying why: `stand` with the stiffness off (a NAO cannot stand without it: that state is `crouch`), Life with the stiffness off (Life needs it), Life in `crouch` (Life stands the robot up), and `sit` on 2.8.
+- **`sit` is 2.1 only.** The 2.8 desktop suite has no inertial sensor ([naoqi-fidelity.md](naoqi-fidelity.md), "cannot reliably reach Sit"): measured Nov 25, 2026, `goToPosture("Sit")` from Crouch took 30 s and returned False, and under Life it left the robot standing. On 2.1 it works with or without Life (measured: `True` in 15.5 s from Crouch, in 11.7 s under Life, which then keeps the robot sitting).
+- **The entrypoint brings the robot there** after the languages (2.8), in this order: Life first, since `setState("solitary")` stands the robot up (measured from Crouch and from Sit at rest, both versions); then the posture: `rest()` for `crouch`, or `wakeUp()` and `goToPosture("Crouch", 0.8)` for a stiff crouch, `wakeUp()` for `stand` (when Life has not already stood it), `wakeUp()` and `goToPosture("Sit", 0.8)` for `sit`, the posture checked afterwards (`getPosture()` is `Sit`, or the boot fails); then, for `sit` with the stiffness off, `setStiffnesses("Body", 0)`: `rest()` from Sit crouches the simulated robot (measured on both). Each of these moves may take up to 60 s ([container.md](container.md), "Entrypoint").
+- **Life on at boot** is switched on by `setState("solitary")` after the languages, not by the robot's Life-at-boot preference, which stays off: Life would preload the 2.8 dialog before its languages are chosen, and it would have no grammar ([speech-recognition.md](../services/speech-recognition.md), "What it listens for").
+
+#### The default: Life off, at rest
+
+On both versions, with the default `robot` block:
 
 | | Value |
 |---|---|
 | `ALAutonomousLife.getState()` | `disabled` |
 | `ALMotion.robotIsWakeUp()` | false |
-| Posture | `Crouch`, the motors off (stiffness 0) |
+| Posture | `Crouch`, the stiffness off (0) |
 
 - This is a NAO whose Life-at-boot switch is off (the preference `com.aldebaran.debug` / `DisableLifeAndDialog` at `"1"`), found at rest in Crouch each time we connected to one.
 - A client that wants the robot standing calls `ALMotion.wakeUp()`, and one that wants Life calls `ALAutonomousLife.setState("solitary")`, which stands the robot itself. A script that forgets `wakeUp()` now sees a crouched robot.
 - **2.1**: the desktop suite boots standing and stiff with Life `disabled`. The entrypoint calls `ALMotion.rest()` before the sim is declared ready (measured: Crouch, stiffness 0, in 5.3 s).
-- **2.8**: the desktop suite starts Life in `solitary`, which wakes the robot. Life reads the robot's switch itself when it starts: with the preference at `"1"` it stays `disabled` (measured on the sim), and a client's `setState("solitary")` still works. A module of ours, `naoqi_sim_life_qiservice`, loaded with our other modules before the package services start, sets the preference (`ALPreferenceManager.setValue`). **Built** (Nov 25, 2026): the 2.8 sim boots with Life `disabled`. Still to build: the entrypoint's `ALMotion.rest()` as on 2.1, since the simulated robot is standing and stiff when Life does not start (measured; `rest()` takes 5.1 s).
+- **2.8**: the desktop suite starts Life in `solitary`, which wakes the robot. Life reads the robot's switch itself when it starts: with the preference at `"1"` it stays `disabled` (measured on the sim), and a client's `setState("solitary")` still works. A module of ours, `naoqi_sim_life_qiservice`, loaded with our other modules before the package services start, sets the preference (`ALPreferenceManager.setValue`). The entrypoint then calls `ALMotion.rest()` as on 2.1, since the simulated robot is standing and stiff when Life does not start (measured; `rest()` takes 5.1 s).
 - **The dialog is not preloaded at boot** when Life is off, on a robot (its boot package preloads it only when Life is on) as on the sim (measured). It is preloaded when Life is switched on, or at `_runMain()`. On 2.8 the entrypoint chooses the robot's languages before that, which is what makes the dialog write its grammar ([speech-recognition.md](../services/speech-recognition.md), "What it listens for").
-- **Measured from this state**, both versions: `setState("solitary")` stands the robot (3.8 s on 2.1, as on a real NAO; 4.5 s on 2.8), `setState("disabled")` brings it back to Crouch with the motors off (5.3 s).
+- **Measured from this state**, both versions: `setState("solitary")` stands the robot (3.8 s on 2.1, as on a real NAO; 4.5 s on 2.8), `setState("disabled")` brings it back to Crouch with the stiffness off (5.3 s).
 - **A joint command moves a joint at stiffness 0** on both sims, where a real NAO's motor does not move (measured: `angleInterpolation` and `setAngles` on the head at rest). So a script that forgets `wakeUp()` shows a crouched robot, and still works. Recorded in [naoqi-fidelity.md](naoqi-fidelity.md) as a limitation.
-- **No config field for Life at boot for now** (user, Nov 25, 2026). The robot's default is Life on; a field mapped to the preference can come later.
 
 ### Switching Life on
 
-- **2.1**: the desktop suite's `ALAutonomousLife.setState` refuses every call ("Calls to the setState method are not currently allowed") until `ALAutonomousLife._setStateChangeEnabled(True)` is called. The entrypoint makes that call once Life answers. A real NAO needs no such call (measured: `setState("solitary")` works from `disabled` and stands the robot in 3.8 s).
+- **2.1**: the desktop suite's `ALAutonomousLife.setState` refuses every call ("Calls to the setState method are not currently allowed") until `ALAutonomousLife._setStateChangeEnabled(True)` is called. The entrypoint makes that call once Life answers, before its `rest()`. A real NAO needs no such call (measured: `setState("solitary")` works from `disabled` and stands the robot in 3.8 s).
 - **2.8**: nothing to do.
 - `setState("interactive")` stays an invalid transition, as on a robot: Life enters `interactive` itself.
 
@@ -65,7 +94,7 @@ The two versions do it differently on a robot, and so do the sims.
 ### 2.8: a NAO's Life configuration
 
 - The desktop `life` package ships a configuration with no rule to `interactive` ("Juliette 2.0.x Compatible. Limited continuous Dialog"). A NAO 6 uses `autonomy-nao-romeo.cfg` ("Pure interactive state with Dialog") from the robot's `life` package.
-- Life reads `~/.config/naoqi/autonomy.cfg` first. `fetch-and-build-images` extracts the NAO file from the public robot image, as it extracts the `animations` package ([container.md](container.md), "Image data and licensing"), and the image installs it there. Never committed.
+- Life reads `~/.config/naoqi/autonomy.cfg` first. `fetch-and-build-images` extracts the NAO file from the public robot image, as it extracts the `animations` package ([container.md](container.md), "Image data and licensing"), and the image installs it there ([container.md](container.md), "Robot packages in the image"). Never committed.
 - Of the launchpad's people keys this configuration reads two: `Launchpad/NumPeopleZone1` and `Launchpad/ZoneOfTrackedHuman`.
 - Its other way into `interactive`, a double tap on the front head sensor (`ALTactileGesture/Gesture == "DoubleFront"`), is not provided: it needs the robot's `altactilegesture` package and a touch input ([touch-input.md](../host/touch-input.md), a draft). Left out of this work.
 - Calls of the rules that fail harmlessly on the sim: `ALSignsAndFeedback` (unless installed, open question 4), `_ALBrightnessStatistics`, `boot-config`, the sound set when the user has not installed it.
@@ -110,7 +139,7 @@ Measured the same day, and settled:
 
 Deferred:
 
-4. A config field for Life at boot.
+4. ~~A config field for Life at boot.~~ Settled Nov 25, 2026: the `robot` block, "The state at boot".
 5. The double-tap trigger on 2.8.
 6. A NAO 6's behaviour is judged from its public image: none at hand.
 7. What a NAO does at boot with Life off (posture, stiffness): never watched, it takes a reboot of the real robot.

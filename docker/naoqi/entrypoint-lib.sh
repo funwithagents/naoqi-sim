@@ -5,7 +5,7 @@
 #
 # Any failure exits non-zero after terminating naoqi-bin, so a failed boot shows as an exited
 # container, never as a half-robot. Tunables (images never change them; the host-side tests do):
-# NAOQI_SIM_READY_TRIES, NAOQI_SIM_SETTLE_POLLS, NAOQI_SIM_POLL_INTERVAL, NAOQI_SIM_QICLI_TIMEOUT,
+# NAOQI_SIM_READY_TRIES, NAOQI_SIM_SETTLE_POLLS, NAOQI_SIM_POLL_INTERVAL, NAOQI_SIM_QICLI_TIMEOUT, NAOQI_SIM_MOVE_TIMEOUT,
 # NAOQI_SIM_QICLI_HANGS, NAOQI_HOME.
 set -u
 NAOQI_HOME=${NAOQI_HOME:-/opt/naoqi}
@@ -14,6 +14,7 @@ INTERVAL=${NAOQI_SIM_POLL_INTERVAL:-1}
 TRIES=${NAOQI_SIM_READY_TRIES:-120}
 SETTLE=${NAOQI_SIM_SETTLE_POLLS:-3}
 QICLI_TIMEOUT=${NAOQI_SIM_QICLI_TIMEOUT:-5}  # seconds a qicli call may take
+MOVE_TIMEOUT=${NAOQI_SIM_MOVE_TIMEOUT:-60}  # seconds a call that moves the robot may take
 HANGS=${NAOQI_SIM_QICLI_HANGS:-3}            # consecutive unanswered polls that fail the boot
 PROGRESS=10                                  # polls between two "still waiting" lines
 NAOQI_PID=
@@ -165,6 +166,53 @@ choose_languages() {
       call "$service.setLanguage" "$language" >/dev/null 2>&1 || fail "$service.setLanguage $language failed"
     done
   done
+}
+
+# allow_life_state_changes: the 2.1 desktop suite's ALAutonomousLife refuses every setState ("Calls to
+# the setState method are not currently allowed") until this call; a real NAO 2.1 accepts them
+# (specs/container/autonomous-life.md, "Switching Life on").
+allow_life_state_changes() {
+  # A hidden method (--hidden), and a bool, not the string "true" (--json).
+  local out
+  out=$(call ALAutonomousLife._setStateChangeEnabled true --hidden --json 2>&1) || fail "ALAutonomousLife._setStateChangeEnabled failed: $out"
+}
+
+# move <Service.method> [args...]: a call that moves the robot, for seconds (a rest is about 5 s,
+# sitting down 12 to 16 s), so bounded by MOVE_TIMEOUT rather than the answers' QICLI_TIMEOUT.
+move() {
+  local out
+  out=$(QICLI_TIMEOUT=$MOVE_TIMEOUT call "$@" 2>&1) || fail "$1 failed: $out"
+}
+
+# robot_state: the robot as the config's robot block asks when the sim is ready
+# (specs/container/autonomous-life.md, "The state at boot"): Life first, since switching it on
+# stands the robot up, then the posture, then the stiffness. The config has refused the
+# combinations a NAO cannot be in.
+robot_state() {
+  local posture=${NAOQI_SIM_ROBOT_POSTURE:-crouch} stiffness=${NAOQI_SIM_ROBOT_STIFFNESS:-off}
+  local life=${NAOQI_SIM_ROBOT_LIFE:-off} out
+  [[ $life == on ]] && move ALAutonomousLife.setState solitary
+  case $posture in
+    crouch)
+      if [[ $stiffness == on ]]; then
+        move ALMotion.wakeUp
+        move ALRobotPosture.goToPosture '"Crouch"' 0.8 --json
+      else
+        move ALMotion.rest
+      fi
+      ;;
+    stand) [[ $life == on ]] || move ALMotion.wakeUp ;;
+    sit)
+      [[ $life == on ]] || move ALMotion.wakeUp
+      move ALRobotPosture.goToPosture '"Sit"' 0.8 --json
+      out=$(call ALRobotPosture.getPosture 2>&1)
+      [[ $out == *Sit* ]] || fail "the robot did not sit: ALRobotPosture.getPosture answered $out"
+      # Stiffness off where it sits: rest() would crouch it.
+      [[ $stiffness == on ]] || move ALMotion.setStiffnesses '"Body"' 0.0 --json
+      ;;
+    *) fail "unknown posture $posture" ;;
+  esac
+  log "robot: $posture, stiffness $stiffness, life $life"
 }
 
 # mark_ready: the whole sequence succeeded. Then wait on naoqi-bin (signals are forwarded to it).

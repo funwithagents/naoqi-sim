@@ -44,7 +44,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `src/naoqi_sim/errors.py` | `NaoqiSimError` and its subclasses, shared by the modules | [api.md](specs/runtime/api.md) |
 | `src/naoqi_sim/docker_images.py` | `fetch_and_build_images` (fetch, build with the version label, verify the boot, record) and `check_images` (what a start checks) | [api.md](specs/runtime/api.md), [container.md](specs/container/container.md) |
 | `src/naoqi_sim/files.py` | Where naoqi-sim's files are: the recipes (package data when installed, the checkout's `docker/` otherwise), the image data folder (`NAOQI_SIM_IMAGE_DATA`, the checkout's `docker/image-data/`, or the user data directory) and the environment every compose call gets | [api.md](specs/runtime/api.md), [project.md](specs/project.md) |
-| `src/naoqi_sim/suite.py` | Fetches the pinned Choregraphe suites and the robot image's `animations` package into `docker/image-data/<version>/` (first step of `fetch-and-build-images`) | [container.md](specs/container/container.md) |
+| `src/naoqi_sim/suite.py` | Fetches the pinned Choregraphe suites, the robot image's `animations` package and (2.8) a NAO's Life configuration into `docker/image-data/<version>/` (first step of `fetch-and-build-images`) | [container.md](specs/container/container.md) |
 
 **Keep this map current:** when you add, rename, or remove a top-level `src/naoqi_sim/` module or a root directory, update the map in the same change — same discipline as keeping spec/plan statuses honest (below). A test (`tests/test_project_map.py`) enforces that every `src/naoqi_sim/*.py` module appears here and vice-versa — and that the spec frontmatter (see below) stays honest too.
 
