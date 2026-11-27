@@ -18,6 +18,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from naoqi_sim import stack
+from naoqi_sim.errors import CameraNotFedError
 from naoqi_sim.viewer import SimWorld, WorldClosed
 
 log = logging.getLogger(__name__)
@@ -33,6 +34,20 @@ MIXED = "mixed"  # the summary when the fed cameras have different sources
 
 def camera_key(camera: str) -> str:
     return f"NaoqiSim/Camera/{camera.capitalize()}/Source"
+
+
+def covered_frame() -> np.ndarray:
+    """What a camera sees with a hand over it (specs/host/controls.md, "The camera cover"): the
+    grey NAOqi turns into a luminance of mean 17.5, as a real NAO's top camera measured under a
+    hand. NAOqi converts an injected RGB frame to luminance in studio range, Y = 16 + 219/255 *
+    RGB (measured: a grey of 17.5 read 31), so the grey is 1.75: in each 2x2 block, three pixels
+    at 2 and one at 1."""
+    rows, cols = np.indices((HEIGHT, WIDTH))
+    grey = np.where((rows % 2 == 1) & (cols % 2 == 1), 1, 2).astype(np.uint8)
+    return np.repeat(grey[:, :, None], 3, axis=2)
+
+
+COVERED = covered_frame()
 
 
 # How long stop() waits for each thread: a source blocked longer is left behind (daemon).
@@ -99,6 +114,9 @@ class VideoInput:
         self._ready = threading.Condition()
         self._frames: dict[int, np.ndarray] = {}  # by camera index, awaiting injection
         self._failing: set[str] = set()
+        self._covered: set[str] = (
+            set()
+        )  # cameras fed the covered frame in place of their source's
         self._threads: list[threading.Thread] = []
         # Frames of each camera's schedule that never reached NAOqi: a slot skipped by a render
         # that ran late, or a frame replaced by the next one before injection. Frames put +
@@ -109,6 +127,33 @@ class VideoInput:
     def missed(self) -> int:
         """The frames of every schedule that never reached NAOqi."""
         return sum(self.missed_by_camera.values())
+
+    @property
+    def fed(self) -> tuple[str, ...]:
+        """The cameras this device feeds, in NAOqi's camera order."""
+        return tuple(camera for camera, _ in self._cameras)
+
+    def covered(self) -> dict[str, bool]:
+        """Whether each camera (`top`, `bottom`) is covered."""
+        return {camera: camera in self._covered for camera in CAMERAS}
+
+    def cover(self, camera: str, covered: bool = True) -> None:
+        """Covers the camera (a hand over it: `COVERED` injected in place of its source's frames)
+        or uncovers it. `ValueError` for an unknown camera, `CameraNotFedError` for one this
+        device does not feed."""
+        if camera not in CAMERAS:
+            raise ValueError(
+                f"unknown camera {camera!r}: expected one of {list(CAMERAS)}"
+            )
+        if camera not in self.fed:
+            raise CameraNotFedError(
+                f"the {camera} camera gets no frames (video_input.{camera}.source is none, or "
+                "its source closed), so there is nothing to cover"
+            )
+        if covered:
+            self._covered.add(camera)
+        else:
+            self._covered.discard(camera)
 
     def start(self) -> None:
         self._session = self._connect()
@@ -152,9 +197,17 @@ class VideoInput:
                 if due[camera] > now:
                     continue  # not this camera's slot
                 try:
-                    images[CAMERAS[camera]] = source.frame()
+                    image = source.frame()  # rendered even when covered: a closed
+                    # viewer is noticed, and the scene's time keeps its pace
+                    images[CAMERAS[camera]] = (
+                        COVERED if camera in self._covered else image
+                    )
                 except NoFrame:
-                    self.missed_by_camera[camera] += 1
+                    if camera in self._covered:
+                        # a hand over the lens is dark whether or not the source delivers
+                        images[CAMERAS[camera]] = COVERED
+                    else:
+                        self.missed_by_camera[camera] += 1
                 except WorldClosed:
                     if self._stopping.is_set():
                         return
@@ -189,6 +242,7 @@ class VideoInput:
         dropped, said once, and its keys go back to `none`; the other cameras carry on."""
         gone = [camera for camera, source in self._cameras if source.name == name]
         self._cameras = [(c, s) for c, s in self._cameras if s.name != name]
+        self._covered.difference_update(gone)
         log.warning(
             "the viewer is closed: the robot's %s camera%s get%s no more frames",
             " and ".join(gone),

@@ -54,6 +54,11 @@ class StandIn:
     def url(self):
         return "tcp://127.0.0.1:9559"
 
+    @property
+    def controls_url(self):
+        controls = self.config.controls
+        return f"http://127.0.0.1:{controls.port}/" if controls.enabled else None
+
 
 @pytest.fixture
 def stand_in(monkeypatch):
@@ -98,6 +103,15 @@ def test_run_starts_until_ctrl_c_then_stops(signals, stand_in, tmp_path, capsys)
         "NAOqi 2.8 (sim): NAOqi 2.8.7.4 ready at tcp://127.0.0.1:9559 (Ctrl-C to stop)"
         in capsys.readouterr().out
     )
+
+
+def test_run_says_where_the_controls_are(signals, stand_in, tmp_path, capsys):
+    path = tmp_path / "sim.json"
+    path.write_text(json.dumps({"controls": {"enabled": True}}))
+    send_sigint_after(0.3)
+    assert cli.main(["run", "--config", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "NAOqi 2.1 (sim): controls at http://127.0.0.1:9564/" in out
 
 
 def test_run_without_a_file_uses_the_defaults(signals, stand_in):

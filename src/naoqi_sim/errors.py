@@ -47,3 +47,7 @@ class FetchError(NaoqiSimError):
 
 class ImageBuildError(NaoqiSimError):
     """`docker compose build` failed."""
+
+
+class CameraNotFedError(NaoqiSimError):
+    """A head camera was covered or uncovered while the video input does not feed it."""

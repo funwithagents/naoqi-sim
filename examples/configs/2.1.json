@@ -1,0 +1,30 @@
+{
+  "naoqi": { "version": "2.1", "ready_timeout_s": 240.0 },
+  "robot": {
+    "posture": "crouch",
+    "stiffness_on": false,
+    "life_on": false,
+    "available_languages": ["English", "French"],
+    "language": "English"
+  },
+  "audio_output": { "mode": "play" },
+  "audio_input": { "source": "mic" },
+  "video_input": {
+    "top": { "source": "webcam" },
+    "bottom": { "source": "render" }
+  },
+  "viewer": {
+    "headless": false,
+    "scene": "empty",
+    "variant": "auto",
+    "cameras_display": true,
+    "people_display": true
+  },
+  "perception": { "enabled": true },
+  "speech_recognition": { "enabled": true },
+  "controls": {
+    "enabled": true,
+    "port": 9564,
+    "open": true
+  }
+}

@@ -1,4 +1,0 @@
-{
-  "video_input": { "top": { "source": "webcam", "device": 0 }, "bottom": { "source": "render" } },
-  "viewer": { "cameras_display": true }
-}

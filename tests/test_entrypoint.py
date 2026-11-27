@@ -140,6 +140,7 @@ ADDED = {
         *STUBS[v],
         *(["_NaoqiSimPerceptionSources"] if v == "2.8" else []),
         "_NaoqiSimLaunchpadPeople",
+        *(["_ALBrightnessStatistics"] if v == "2.8" else []),
     ]
     for v in ("2.1", "2.8")
 }
@@ -172,7 +173,7 @@ MODULES = {
     "naoqi_sim_speech_recognition_qiservice "
     "naoqi_sim_face_detection_qiservice naoqi_sim_people_perception_qiservice "
     "naoqi_sim_engagement_zones_qiservice naoqi_sim_launchpad_people_qiservice "
-    "naoqi_sim_perception_stubs_qiservice",
+    "naoqi_sim_perception_stubs_qiservice naoqi_sim_brightness_statistics_qiservice",
 }
 URLS = {"2.1": "--qi-url tcp://127.0.0.1:9559", "2.8": "--qi-url tcp://127.0.0.1:9558"}
 # The vision modules put in 2D, as on a real NAO (no depth camera), before boot completes.

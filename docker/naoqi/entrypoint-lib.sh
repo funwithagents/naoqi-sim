@@ -40,7 +40,11 @@ qi() {
   watcher=$!
   wait "$pid"
   status=$?
-  if kill "$watcher" 2>/dev/null; then wait "$watcher" 2>/dev/null; else status=124; fi
+  kill "$watcher" 2>/dev/null
+  wait "$watcher" 2>/dev/null
+  # Killed by the watcher: SIGKILL, 128 + 9. Whether the watcher has exited yet says nothing (on a
+  # loaded machine it may still be running just after its kill), so the status alone tells.
+  [ "$status" -eq 137 ] && status=124
   return "$status"
 }
 
