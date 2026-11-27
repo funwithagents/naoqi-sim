@@ -1,117 +1,170 @@
-# naoqi-sim (prototype)
+# naoqi-sim
 
-A NAO in a box: NAOqi 2.1.4.13 (`naoqi-bin` from the Choregraphe suite) running in a local
-Docker image with our Python 2.7 override modules loaded into its process. Unofficial, Apache-2.0;
-the image is built locally from the user's suite and is never published.
+naoqi-sim is a simulated NAOqi robot on your computer: today a NAO, on NAOqi 2.1 or 2.8. It runs Aldebaran's own NAOqi in a Docker container and gives it what a desktop NAOqi lacks to behave like the robot: a voice on your loudspeaker, your microphone for ears, your webcam or a rendered scene for eyes, speech recognition, face detection and people perception, Autonomous Life with its dialog, touch sensors, and a 3D window showing the robot. It answers on `127.0.0.1:9559`, so Choregraphe, an existing script or any `qi` client connects to it exactly as to a real robot, with no naoqi-sim-specific code.
 
-Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4; its findings are folded into the specs.
+> [!IMPORTANT]
+> **Unofficial.** naoqi-sim is an independent project. It is not affiliated with or endorsed by Aldebaran or Maxtronics; NAO, NAOqi and Choregraphe are their trademarks. naoqi-sim contains none of their software: it downloads Aldebaran's publicly available NAOqi software to your machine and builds the images there, and they are never published.
 
-## Layout
+[docs/features.md](docs/features.md) lists what is simulated, and [docs/reference/differences-from-a-nao.md](docs/reference/differences-from-a-nao.md) what is not.
 
-- `docker/naoqi/Dockerfile.naoqi-2.1`: Ubuntu 14.04 amd64 + 2.1.4.13 suite tarball at `/opt/naoqi`, non-root user, entrypoint.
-- `docker/naoqi/Dockerfile.naoqi-2.8`: Ubuntu 16.04 amd64 + 2.8.7.4 suite, NAO V6 model, `naoqi-bin` behind the suite's gateway on 9559 (compose profile `2.8`; 2.1 is profile `2.1`).
-- `docker/naoqi/entrypoint-2.1.sh`, `docker/naoqi/entrypoint-2.8.sh`: each version's boot procedure, top to bottom: write a copy of the suite's `autoload.ini` without the built-ins we replace and with our modules in their place (right after `pythonbridge`: the native relay, the loader that loads our Python modules, the C++ fronts), start `naoqi-bin` with it, wait for a settled service list, check the replacements and the added services answer and mark `NaoqiSim` ready. Any failure exits non-zero. Any failure exits non-zero. `docker/naoqi/entrypoint-lib.sh` holds the steps both share.
-- `docker/naoqi/healthcheck.sh`: the Docker healthcheck, `NaoqiSim.isReady` on 9559.
-- `docker/naoqi/services/`: the code that runs inside NAOqi, one folder per service, its Python 2.7 core and per-version shells (`ALModule` on 2.1, qi service on 2.8) with its C++:
-  - `status-service/`: `naoqi_sim_status_*`, the `NaoqiSim` service (versions, device sources, readiness, as a service and `NaoqiSim/*` ALMemory keys).
-  - `speech/`: `naoqi_sim_speech_front.cpp`, `ALTextToSpeech` itself, a C++ front so callers can start, wait for and stop a sentence by task id as on a NAO, over `naoqi_sim_speech_core` (tag parsing, engine call, events) and its shells.
-  - `audio-player/`: `naoqi_sim_audio_player_front.cpp`, `ALAudioPlayer` itself, a C++ front over `naoqi_sim_audio_player_core` (sound files decoded with the suite's libsndfile, volumes, loops, sound sets, each sound a stream of the host audio output, which mixes it with the speech).
-  - `audio-device/`: `naoqi_sim_audio_device_*`, the `ALAudioDevice` the desktop suites lack (subscribers, formats, the host link client), and `naoqi_sim_audio_device_relay.cpp`, a small C++ module that hands each microphone buffer to a subscriber's `processRemote` as a binary, as a NAO's C++ `ALAudioDevice` does (Python 2.7 inside NAOqi cannot send one).
+## Quick start
 
-  Each image compiles the C++ in a builder stage against the version's own C++ SDK (2.8's from [aldebaran/nao6-doc-sdk](https://github.com/aldebaran/nao6-doc-sdk)) and keeps only the `.so` files.
-- `docker/tts-engine/`: the speech engine container (Piper, `POST /say`, streams PCM to the host audio output), one voice per NAOqi language for sixteen of them, the English and French ones pitched up by resampling to a child's voice as a NAO's is: the config's `robot.available_languages` installs the languages that also have a recognition model (thirteen: all but Danish, Finnish and Norwegian), as a NAO's language packs, and `robot.language` picks the one at boot (English and French are in the image; another language's voice is fetched on first use into the `naoqi-sim_language-packs` volume, shared by both versions). The voices come from `rhasspy/piper-voices` and are never in this repository; each voice's dataset licence is CC0, public domain or CC BY 4.0 (the French voice is trained on the SIWIS French speech synthesis database, CC BY 4.0), most voices being fine-tuned from a research-only base, as `specs/container/tts-engine.md` ("Voices") records. Piper itself is GPL and stays inside that container, built on your machine and never pushed.
-- `src/naoqi_sim/sim.py`, `config.py`, `stack.py`, `viewer.py`, `cli.py`: the `NaoqiSim` object, its `NaoqiSimConfig` (JSON, examples in `examples/configs/`), the containers, the sim window (naoqi-viewer, the `viewer` extra) and the `naoqi-sim` command.
-- `src/naoqi_sim/audio_output.py`: the host audio output a `NaoqiSim` runs, the robot's loudspeakers as its sound server: it mixes the named streams the containers send (the `speech` stream, one `player:<id>` per sound) at 48 kHz stereo, and the mix goes to a sink: the output device, nothing (`silent`), a WAV file (`record`) or memory (tests, which also keeps each stream).
-- `src/naoqi_sim/audio_input.py`, `host_link.py`: the robot's microphones, served to `ALAudioDevice` over the host link (port 9563): the host microphone (`audio_input.source = "mic"`) or the fake source (`"fake"`: silence plus what code plays with `sim.fake_audio.play("hello.wav")`, for tests). Either way the robot hears its own voice, as a NAO does.
-- `src/naoqi_sim/files.py`: where the recipes (`docker/`, shipped in the wheel as package data) and the image data are, in a checkout or installed.
-- `src/naoqi_sim/docker_images.py` and `src/naoqi_sim/suite.py`: `naoqi-sim fetch-and-build-images`, which fills the image data folder (`docker/image-data/<version>/` in a checkout) with the pinned Choregraphe suite, the `animations` package extracted from the public robot image (on 2.8 also a NAO's Life configuration and the robot's `altactilegesture` and `signs-and-feedback` packages) and the relay's build files (the version's C++ SDK, 334 MB for 2.1 and 1.3 GB for 2.8), all public and hash-checked; it keeps what is already there, builds the images with the naoqi-sim version as label, and boots them once to verify them (`docker/image-data/images.json`).
-- `docker/image-data/`: gitignored; `2.1/` and `2.8/` each hold the suite tarball, `animations.pkg` and the relay's build files (`2.8/` also `autonomy.cfg`, `altactilegesture.pkg` and `signs-and-feedback.pkg`); `images.json` lists the verified images.
-- `docker/compose.yaml`: also a package store volume per version, so packages installed over qi or Choregraphe (the sound set) survive `docker compose down`; `down -v` resets them.
-- `tests/`, `tests-e2e/`: the fast tier and the live tier, which starts the containers itself.
-
-## Run
-
-Python 3.12 or 3.13 on macOS (arm64), Linux (x86_64) or Windows (x64): the libqi wheels (`qi`, from
-[funwithagents/libqi-python](https://github.com/funwithagents/libqi-python)'s package index,
-`https://funwithagents.github.io/libqi-python/simple/`) exist for those only. The containers need
-Docker (Docker Desktop on macOS and Windows; Windows is not tested end to end yet).
-The 2.8 container asks Docker for the `NET_ADMIN` capability on its own network, so that robot
-packages inside it find NAOqi on `127.0.0.1:9559` as on a robot; a host that refuses it still runs
-the sim, and only the services those packages register stay out of reach
-([container.md](specs/container/container.md), "Network layout").
+You need Docker running, [uv](https://docs.astral.sh/uv/), and about 11 GB of free disk ([requirements](#requirements)). Then run these four commands, one after the other:
 
 ```bash
-uv sync --dev
-uv run naoqi-sim fetch-and-build-images   # fetch, build and verify the 2.1 and 2.8 images (or: 2.1 / 2.8); rerun after changing docker/
-uv run naoqi-sim run --config examples/configs/2.1.json   # NAOqi 2.1, the window, your mic, your webcam, the controls page; Ctrl-C stops it
-uv run naoqi-sim run --config examples/configs/2.8.json   # or NAOqi 2.8
-uv run naoqi-sim run                      # no config: the same without the microphone, the cameras and the controls
-uv run naoqi-sim status                   # from another terminal: the containers and the robot's state
-uv run naoqi-sim logs --follow            # the containers' logs
-uv run naoqi-sim cleanup                  # after a run that died without stopping
+# 1. Install naoqi-sim
+uv tool install --python 3.12 "naoqi-sim[viewer,webcam] @ git+https://github.com/funwithagents/naoqi-sim"
+
+# 2. Download Aldebaran's NAOqi 2.8 and build the robot's images (about 20 minutes, once)
+naoqi-sim fetch-and-build-images --naoqi 2.8
+
+# 3. Optional: Aldebaran's NAO meshes for the 3D window (shows a license, type "yes")
+naoqi-sim fetch-meshes
+
+# 4. Run the robot
+naoqi-sim run --naoqi 2.8 --viewer --mic --controls
 ```
 
-`examples/configs/2.1.json` and `2.8.json` are the basic use, every block written out: the window,
-with what the robot's cameras see and the people it perceives; speech on the loudspeaker; the robot
-hearing your microphone, seeing you through your webcam on its top camera (macOS: Camera access for
-the terminal) and the rendered scene on its bottom one; and the controls page opened in your
-browser, to drive its motors, posture and Life, touch it, cover its camera and stop an activity.
-Copy one and change what you need (specs/runtime/config.md). For example:
+You now have a NAO V6 in a 3D window, hearing your microphone and speaking on your loudspeaker, with its controls page open in your browser. `Ctrl-C` in the terminal stops it.
 
-- `viewer.headless` true, `audio_output.mode` `"silent"`, `audio_input.source` and both cameras'
-  `source` `"none"`, `controls.enabled` false: no window, no sound, no inputs, no page, no `viewer`
-  extra needed (servers);
-- `video_input.top.source` `"render"`: the rendered scene on the top camera too, with no camera
-  needed. A webcam does not turn with the head: the robot detects you, but ALBasicAwareness keeps
-  turning the head while you stay off-centre. Check head tracking with the `render` source and
-  face props (specs/host/video-input.md, "The webcam source");
-- `robot.available_languages` and `robot.language`: more languages installed, another one at boot
-  (a new language's voice and model are fetched once);
-- `robot.posture` `"stand"`, `stiffness_on` and `life_on` true: Autonomous Life on, as a NAO
-  whose Life starts at boot.
+Once the terminal says `ready at tcp://127.0.0.1:9559`, connect to the robot as to a real one:
 
-`examples/configs/ci.json` holds the live tier's settings.
+- **Choregraphe**: *Connect to* the IP `127.0.0.1`, port 9559.
+- **A script**: `qi.Session().connect("tcp://127.0.0.1:9559")`.
 
-Then connect any qi client to `tcp://127.0.0.1:9559`, as to a NAO. The `NaoqiSim` service tells a client it is on naoqi-sim (`getVersion`, `getNaoqiVersion`, `isReady`; `NaoqiSim/*` keys in ALMemory): it reports the naoqi-sim version the images were built with. The compose project is `naoqi-sim`, so the package store volumes are `naoqi-sim_packages-2.1` and `naoqi-sim_packages-2.8`.
-
-## Use from another project
-
-naoqi-sim is not on PyPI: a project depends on it from GitHub, with uv, pinned to a commit or tag.
-In the project's `pyproject.toml`:
-
-```toml
-[project]
-requires-python = ">=3.12,<3.14"            # naoqi-sim's range
-dependencies = ["naoqi-sim[viewer]"]          # or "naoqi-sim": no window, no render camera; add "webcam" for the webcam source
-
-[tool.uv.sources]
-naoqi-sim = { git = "https://github.com/funwithagents/naoqi-sim", rev = "<commit or tag>" }
-```
-
-uv takes `qi` (from the libqi index) and naoqi-viewer from naoqi-sim's own sources, so the project
-declares neither (and should not pin naoqi-viewer at another commit), nor the platforms: on a machine
-the libqi wheels don't cover, `uv sync` fails for want of a `qi` wheel. Then, once per machine:
+Other ways to run it, changing only step 4:
 
 ```bash
-uv sync
-uv run naoqi-sim fetch-and-build-images   # the images; the suites go to the user data directory
-uv run naoqi-viewer fetch-meshes          # optional: Aldebaran's meshes in the window (license prompt)
-uv run naoqi-sim run                      # or a NaoqiSim in the project's code
+naoqi-sim run --naoqi 2.8 --viewer --webcam --mic --controls   # the robot sees you through your webcam
+naoqi-sim run --naoqi 2.8 --controls                           # no window, no microphone: the robot and its controls page
+naoqi-sim run --naoqi 2.1 --viewer --mic --controls            # a NAO V5 on NAOqi 2.1 (build it first: step 2 with --naoqi 2.1)
 ```
 
-An installed naoqi-sim reads its recipes from its package and keeps the image data (1.8 GB for
-both versions), `hashes.json` and `images.json` in the user data directory
-(`~/Library/Application Support/naoqi-sim/image-data` on macOS, `~/.local/share/naoqi-sim/image-data` on
-Linux, `%LOCALAPPDATA%\naoqi-sim\image-data` on Windows). `NAOQI_SIM_IMAGE_DATA=<folder>` points it, or a checkout, at another image data folder, so a
-checkout and the projects depending on naoqi-sim can share one copy. naoqi-viewer's meshes are shared
-by every environment on the machine already. pip is not supported: it ignores uv's sources, so
-it would miss naoqi-viewer's git pin.
+The rest of this page explains each step; [docs/getting-started.md](docs/getting-started.md) goes through the first session in more detail.
 
-## Test
+## Requirements
+
+- **macOS on Apple silicon, Linux x86_64 or Windows x64.** The `qi` wheels exist for those only. Developed on macOS, tested on Linux in CI; Windows is not tested end to end yet.
+- **Docker**, running (Docker Desktop or OrbStack on macOS, Docker Engine on Linux).
+- **[uv](https://docs.astral.sh/uv/)**, which installs Python 3.12 or 3.13 itself. pip is not supported: naoqi-sim takes `qi` and naoqi-viewer from their own sources, which pip ignores.
+- **Disk space**: about 7 GB for NAOqi 2.1, 11 GB for 2.8, 16 GB for both. That is the downloads (0.7 GB for 2.1, 3.2 GB for 2.8), the NAOqi image built from them (4.5 GB and 6.3 GB) and the three engines' images (1.5 GB, shared by both versions).
+
+## The steps, explained
+
+### 1. Install
+
+naoqi-sim is not on PyPI: it installs from GitHub. `uv tool install` puts the `naoqi-sim` command on your PATH. The part in brackets chooses the optional pieces:
+
+| Extra | Adds | You need it for |
+|---|---|---|
+| *(none)* | The robot, its voice, your microphone, the controls page | `naoqi-sim run --naoqi 2.8`, a server, CI |
+| `viewer` | [naoqi-viewer](https://github.com/funwithagents/naoqi-viewer) | The 3D window, and the scene rendered into the robot's cameras (`--viewer`) |
+| `webcam` | OpenCV | Your webcam as the robot's top camera (`--webcam`) |
+
+To use naoqi-sim from a Python project instead, see [Use it from Python](#use-it-from-python).
+
+### 2. Build the images
+
+`fetch-and-build-images` downloads Aldebaran's desktop NAOqi, the robot's animations and the C++ SDK of the version you name from Aldebaran's public repositories (hash-checked), builds the Docker images and boots the robot once to verify them.
+
+- `--naoqi` is required: `2.1`, `2.8`, or both (`--naoqi 2.1 2.8`). Name only the versions you run, since each one is gigabytes of downloads and images.
+- It is the one slow step, about 20 minutes per version, done once per machine.
+- Run it again after upgrading naoqi-sim.
+
+### 3. Get the meshes (optional)
+
+`fetch-meshes` makes the window show the real NAO. Without it the robot is drawn with simple placeholder shapes, and everything else works the same. Aldebaran's meshes are under CC BY-NC-ND 4.0 (non-commercial): the command shows the license, waits for you to type `yes`, then installs them from [funwithagents/naoqi-meshes](https://github.com/funwithagents/naoqi-meshes), once for every project on the machine.
+
+### 4. Run
+
+`naoqi-sim run` starts the robot and stays in the foreground until `Ctrl-C`. Name the NAOqi version, then turn on what you want:
+
+| Option | What it does |
+|---|---|
+| `--naoqi 2.1` or `--naoqi 2.8` | The NAOqi version. Required. 2.1 runs a NAO V5 (or a V4 with `--robot-version v4`), 2.8 a NAO V6 |
+| `--viewer` | Opens the 3D window, and feeds the robot's cameras what it sees there |
+| `--webcam` | Feeds the robot's top camera your webcam instead (macOS asks for camera access once) |
+| `--mic` | Lets the robot hear your microphone |
+| `--controls` | Opens a web page to wake the robot up, change its posture, switch Autonomous Life on, touch its sensors and cover its cameras |
+
+With `--naoqi` alone the robot runs with no window, no camera and no microphone, speaking on your loudspeaker: nothing more than a plain install needs.
+
+While it runs, from another terminal:
 
 ```bash
-uv run pytest             # fast tier: no Docker, no suite
-uv run pytest tests-e2e   # live tier: builds the images if needed, runs 2.1 and 2.8 with NaoqiSim
+naoqi-sim status     # the containers and the robot's state
+naoqi-sim logs -f    # the containers' logs
+naoqi-sim cleanup    # after a run that died without stopping
 ```
 
-Stop any running naoqi-sim before the live tier: it needs ports 9559 and 9562.
+### A config file of your own
+
+Everything else (the languages, Autonomous Life at boot, the posture, the scene, recording the audio) is a field of a JSON config file. `naoqi-sim config` prints the config of the same options, to start from:
+
+```bash
+naoqi-sim config --naoqi 2.8 --viewer --mic > my-nao.json   # every field, at its value
+naoqi-sim run --config my-nao.json
+```
+
+[examples/configs/](examples/configs/) has one such file per NAOqi version, and [docs/reference/configuration.md](docs/reference/configuration.md) describes every field.
+
+## Use it from Python
+
+Add naoqi-sim to a project whose `requires-python` is `">=3.12,<3.14"` (naoqi-sim's range):
+
+```bash
+uv add "naoqi-sim[viewer] @ git+https://github.com/funwithagents/naoqi-sim"
+```
+
+```python
+import asyncio
+
+import qi
+from naoqi_sim import NaoqiSim
+
+
+async def main() -> None:
+    async with NaoqiSim(
+        "2.8"
+    ) as sim:  # starts the containers, stops them on the way out
+        session = qi.Session()
+        session.connect(sim.url)  # tcp://127.0.0.1:9559, as a NAO
+        session.service("ALTextToSpeech").say("Hello, I am a simulated NAO.")
+
+
+asyncio.run(main())
+```
+
+A `NaoqiSim` takes a NAOqi version or a full config (`NaoqiSim.from_json_file("my-nao.json")`), and gives a test what it needs to drive the robot's senses: sounds played into its microphones, faces and objects put in front of its cameras, its touch sensors. [docs/guides/python.md](docs/guides/python.md) covers it, with testing and CI.
+
+## Compatibility
+
+| naoqi-sim | NAOqi | Robots | Python | `qi` |
+|---|---|---|---|---|
+| 0.1 | 2.1.4.13 | NAO V5 (default), NAO V4 | 3.12, 3.13 | 3.1.8 or later, from [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python) |
+| | 2.8.7.4 | NAO V6 | | |
+
+naoqi-viewer comes pinned to the commit naoqi-sim is tested with.
+
+## Documentation
+
+| | |
+|---|---|
+| [docs/getting-started.md](docs/getting-started.md) | The first session: install, build, run, connect Choregraphe or a script, stop |
+| [docs/features.md](docs/features.md) | What is simulated, service by service |
+| [docs/guides/python.md](docs/guides/python.md) | `NaoqiSim` in a program, in tests and in CI |
+| [docs/reference/cli.md](docs/reference/cli.md) | Every command and option |
+| [docs/reference/configuration.md](docs/reference/configuration.md) | Every config field and its default |
+| [docs/reference/differences-from-a-nao.md](docs/reference/differences-from-a-nao.md) | Where the simulated robot differs from a real one |
+| [docs/reference/troubleshooting.md](docs/reference/troubleshooting.md) | Ports, files on disk, common errors |
+
+[docs/index.md](docs/index.md) lists them by task. The design behind each page is in [specs/](specs/_index.md); working on naoqi-sim itself is in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+naoqi-sim's own code is Apache-2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE). What it downloads and runs on your machine keeps its own license:
+
+- **Aldebaran's software** (the desktop NAOqi, the robot's packages, the C++ SDK) is Aldebaran's, fetched from Aldebaran's public repositories under their terms. The images built from it stay on your machine.
+- **Aldebaran's NAO meshes** are CC BY-NC-ND 4.0, non-commercial, and installed only after you accept that license.
+- **The voices** are [Piper](https://github.com/rhasspy/piper) voices, each under its dataset's license (CC0, public domain or CC BY 4.0), most of them fine-tuned from a research-only base voice; Piper itself is GPL and stays inside its container. [specs/container/tts-engine.md](specs/container/tts-engine.md) ("Voices") has the detail per language.
+- **The speech recognition models** are [Vosk](https://alphacephei.com/vosk/) models, Apache-2.0 or MIT; **the face detector** is OpenCV's YuNet, Apache-2.0.
