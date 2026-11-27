@@ -1,17 +1,41 @@
 {
-  "naoqi": { "version": "2.8", "ready_timeout_s": 240.0 },
+  "naoqi": {
+    "version": "2.8",
+    "ready_timeout_s": 240.0
+  },
   "robot": {
+    "type": "nao",
+    "version": "v6"
+  },
+  "setup": {
+    "available_languages": [
+      "English",
+      "French"
+    ],
+    "language": "English",
     "posture": "crouch",
     "stiffness_on": false,
-    "life_on": false,
-    "available_languages": ["English", "French"],
-    "language": "English"
+    "life_on": false
   },
-  "audio_output": { "mode": "play" },
-  "audio_input": { "source": "mic" },
+  "audio_output": {
+    "mode": "play",
+    "record": null
+  },
+  "audio_input": {
+    "source": "mic",
+    "mono": "duplicate"
+  },
   "video_input": {
-    "top": { "source": "webcam" },
-    "bottom": { "source": "render" }
+    "top": {
+      "source": "webcam",
+      "fps": 15,
+      "device": 0
+    },
+    "bottom": {
+      "source": "render",
+      "fps": 15,
+      "device": 0
+    }
   },
   "viewer": {
     "headless": false,
@@ -20,8 +44,12 @@
     "cameras_display": true,
     "people_display": true
   },
-  "perception": { "enabled": true },
-  "speech_recognition": { "enabled": true },
+  "perception": {
+    "enabled": true
+  },
+  "speech_recognition": {
+    "enabled": true
+  },
   "controls": {
     "enabled": true,
     "port": 9564,

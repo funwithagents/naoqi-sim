@@ -35,8 +35,11 @@ def test_the_robot_model_is_a_nao_with_its_limbs(nao):
 
 
 def test_body_id(request, nao):
-    """Get Body ID reads the chest board's id from ALMemory."""
-    known_issue(request, nao, f"no body id ({DESKTOP_FACTS})")
+    """Get Body ID reads the chest board's id from ALMemory: published with the robot's keys on a
+    NAO V5, whose model file has one; the V6's has none (naoqi-fidelity.md)."""
+    known_issue(
+        request, nao, f"a NAO V6's model has no body id ({DESKTOP_FACTS})", ("2.8",)
+    )
     body_id = nao.service("ALMemory").getData("Device/DeviceList/ChestBoard/BodyId")
     assert isinstance(body_id, str) and body_id
 

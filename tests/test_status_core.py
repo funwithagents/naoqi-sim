@@ -83,3 +83,60 @@ def test_not_ready_until_set_ready_then_the_event_is_raised():
     assert status.ready is True
     assert memory.data["NaoqiSim/Ready"] == 1
     assert memory.events[-1] == ("NaoqiSim/Ready", 1)
+
+
+V5_MODEL = """<?xml version="1.0" encoding="UTF-8" ?>
+<ModulePreference name="aldebaran-robotics.com@Device_Head">
+    <Preference name="Key3" memoryName="RobotConfig/Head/BaseVersion" description="" value="V5.0" type="string" /> <!-- deprecated use RobotConfig/Head/Version -->
+    <Preference name="Key11" memoryName="RobotConfig/Body/Device/LeftArm/Version" description="" value="3" type="string" /> <!-- -1 no arm, 2 extended arm V3.3 -->
+    <Preference name="Key13" memoryName="RobotConfig/Body/Version" description="" value="5.0.0" type="string" />
+    <Preference name="Key15" memoryName="RobotConfig/Body/Type" description="" value="Nao" type="string" />
+    <!-- <Preference memoryName="RobotConfig/Body/Color" description="" value="Blue" type="string" /> -->
+</ModulePreference>
+"""
+# 2.8's model files name no `name` attribute
+V6_MODEL = """<ModulePreference>
+    <Preference memoryName="RobotConfig/Body/Version" description="" value="6.0.0" type="string" />
+    <Preference memoryName="RobotConfig/Body/Type" description="" value="Nao" type="string" />
+</ModulePreference>
+"""
+
+
+@pytest.mark.parametrize(
+    ("model", "keys"),
+    [
+        (
+            V5_MODEL,
+            {
+                "RobotConfig/Head/BaseVersion": "V5.0",
+                "RobotConfig/Body/Device/LeftArm/Version": "3",
+                "RobotConfig/Body/Version": "5.0.0",
+                "RobotConfig/Body/Type": "Nao",
+            },
+        ),
+        (
+            V6_MODEL,
+            {"RobotConfig/Body/Version": "6.0.0", "RobotConfig/Body/Type": "Nao"},
+        ),
+    ],
+)
+def test_publishes_the_robots_own_keys_from_its_model_file(tmp_path, model, keys):
+    path = tmp_path / "model.xml"
+    path.write_text(model)
+    memory = FakeMemory()
+    core.Status(
+        memory.insert,
+        memory.raise_event,
+        env={**ENV, "NAOQI_SIM_ROBOT_MODEL_FILE": str(path)},
+    )
+    robot = {k: v for k, v in memory.data.items() if not k.startswith("NaoqiSim/")}
+    assert (
+        robot == keys
+    )  # as a robot's: under their own names, commented entries left out
+
+
+def test_without_a_model_file_no_robot_key_is_published(tmp_path):
+    for env in (ENV, {**ENV, "NAOQI_SIM_ROBOT_MODEL_FILE": str(tmp_path / "gone.xml")}):
+        memory = FakeMemory()
+        core.Status(memory.insert, memory.raise_event, env=env)
+        assert all(key.startswith("NaoqiSim/") for key in memory.data)

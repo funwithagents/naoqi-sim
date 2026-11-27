@@ -107,7 +107,7 @@ jobs:
           docker buildx version
 
       - name: Images, built from Windows
-        run: uv run naoqi-sim fetch-and-build-images ${{ matrix.version }}
+        run: uv run naoqi-sim fetch-and-build-images --naoqi ${{ matrix.version }}
 
       - name: Disk after the build
         run: |

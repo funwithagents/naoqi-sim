@@ -123,7 +123,7 @@ jobs:
       - name: Fetch, build and verify the images (naoqi-sim fetch-and-build-images)
         if: steps.images.outputs.cache-hit != 'true'
         run: |
-          uv run naoqi-sim fetch-and-build-images ${{ matrix.version }}
+          uv run naoqi-sim fetch-and-build-images --naoqi ${{ matrix.version }}
           image=$(uv run python -c "from naoqi_sim.docker_images import IMAGES; print(IMAGES['${{ matrix.version }}'].image)")
           docker save -o "$RUNNER_TEMP/images.tar" "$image" naoqi-sim/tts:dev naoqi-sim/perception:dev naoqi-sim/asr:dev
           rm -rf docker/image-data/${{ matrix.version }}

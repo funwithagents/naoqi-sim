@@ -1,6 +1,10 @@
 {
-  "viewer": { "headless": true, "variant": "placeholder" },
-  "video_input": { "top": { "source": "render" }, "bottom": { "source": "render", "fps": 5 } },
+  "naoqi": { "version": "2.8" },
   "audio_output": { "mode": "silent" },
-  "audio_input": { "source": "fake" }
+  "audio_input": { "source": "fake" },
+  "video_input": {
+    "top": { "source": "render" },
+    "bottom": { "source": "render", "fps": 5 }
+  },
+  "viewer": { "headless": true, "variant": "placeholder" }
 }

@@ -18,7 +18,7 @@ GET  /health 200 {"ok": true, "recognizer": "vosk", "languages": [...], "models"
              every installed language's model is loaded, 503 {"ok": false, ...} before.
 
 Languages: NAOQI_SIM_LANGUAGES names the installed ones (NAOqi names, comma-separated: the
-config's `robot.available_languages`). Each has one Vosk model (MODELS). The default languages'
+config's `setup.available_languages`). Each has one Vosk model (MODELS). The default languages'
 models are in the image (BUILTIN_DIR); any other language's model is downloaded on its first use
 into the language packs volume (MODEL_DIR), its SHA-256 checked (MODEL_SHA256).
 """

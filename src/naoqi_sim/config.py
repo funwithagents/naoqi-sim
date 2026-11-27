@@ -10,11 +10,12 @@ qi, nor naoqi_viewer, nor sounddevice.
 import json
 import math
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import MISSING, asdict, dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any, Literal, Self, get_args
 
 NaoqiVersion = Literal["2.1", "2.8"]
+RobotType = Literal["nao"]
 AudioOutputMode = Literal["play", "silent", "record"]
 AudioInputSource = Literal["none", "mic", "fake"]
 MonoPolicy = Literal["duplicate", "silence"]
@@ -24,10 +25,23 @@ RobotPosture = Literal["crouch", "stand", "sit"]
 
 MAX_FPS = 30  # a NAO camera's highest frame rate
 
+# The robots each NAOqi version runs, as (type, version), its default first: the real pairs only
+# (a NAO V4 or V5 ran NAOqi 2.1, a NAO V6 runs 2.8), whatever model files a suite ships
+# (specs/runtime/config.md, "The robot").
+ROBOTS: dict[str, tuple[tuple[str, str], ...]] = {
+    "2.1": (("nao", "v5"), ("nao", "v4")),
+    "2.8": (("nao", "v6"),),
+}
+
+
+def _robot_names(naoqi_version: str) -> str:
+    return ", ".join(f"{kind} {version}" for kind, version in ROBOTS[naoqi_version])
+
+
 # The language packs naoqi-sim has: a language a robot speaks, hears and talks in, with a voice in
 # the speech engine and a model in the speech recognition engine (docker/asr-engine/server.py,
 # `MODELS`; the fast tier checks them), in the speech engine's order. What
-# `robot.available_languages` may install. Danish, Finnish and Norwegian have a voice only.
+# `setup.available_languages` may install. Danish, Finnish and Norwegian have a voice only.
 LANGUAGES = (
     "English",
     "French",
@@ -132,6 +146,13 @@ def _check_choice(value: Any, kind: Any, key: str) -> None:
         )
 
 
+# What a missing required key is told: every config names its NAOqi version.
+_REQUIRED = {
+    "naoqi": 'is required: the NAOqi to run, as {"version": "2.1"} or {"version": "2.8"}',
+    "version": "is required: the NAOqi version to run, '2.1' or '2.8'",
+}
+
+
 def _join(path: str, key: str) -> str:
     return f"{path}.{key}" if path else key
 
@@ -157,6 +178,15 @@ def _parse_block[T](
         except ConfigError as e:
             # A value's error gets its key here; a nested block's already has its full path.
             raise (e if e.key else ConfigError(e.message, _join(path, key))) from None
+    for f in fields(cls):  # type: ignore[arg-type]
+        if (
+            f.name not in values
+            and f.default is MISSING
+            and f.default_factory is MISSING
+        ):
+            raise ConfigError(
+                _REQUIRED.get(f.name, "is required"), key=_join(path, f.name)
+            )
     try:
         return cls(**values)
     except ConfigError as e:
@@ -225,9 +255,10 @@ def _relative(path: Path | None, directory: Path) -> Path | None:
 
 @dataclass(frozen=True)
 class NaoqiSettings(_Loaders):
-    """Which NAOqi runs, and how long `start()` waits for it."""
+    """Which NAOqi runs, and how long `start()` waits for it. The version has no default: every
+    config names it."""
 
-    version: NaoqiVersion = "2.1"
+    version: NaoqiVersion
     ready_timeout_s: float = 240.0
 
     def __post_init__(self) -> None:
@@ -247,20 +278,64 @@ class NaoqiSettings(_Loaders):
 
 @dataclass(frozen=True)
 class RobotSettings(_Loaders):
-    """The robot: its language packs, and its state when the sim is ready
+    """Which robot the NAOqi runs: its type and its version, as `RobotConfig/Body/Type` and
+    `RobotConfig/Body/Version` say on a robot. Each left out takes the NAOqi version's default
+    (`ROBOTS`: a NAO V5 on 2.1, a NAO V6 on 2.8), which `NaoqiSimConfig` fills in, so a config's
+    `robot` always names both."""
+
+    type: RobotType | None = None
+    version: str | None = None  # a NAO's: "v4", "v5", "v6"
+
+    def __post_init__(self) -> None:
+        if self.type is not None:
+            _check_choice(self.type, RobotType, "type")
+
+    def for_naoqi(self, naoqi_version: str) -> "RobotSettings":
+        """This robot with the NAOqi version's defaults filled in; a `ConfigError` when that
+        NAOqi does not run it."""
+        robots = ROBOTS[naoqi_version]
+        kinds = [kind for kind, _ in robots]
+        kind = self.type if self.type is not None else kinds[0]
+        if kind not in kinds:
+            raise ConfigError(
+                f"NAOqi {naoqi_version} does not run a {kind}; it runs: "
+                + _robot_names(naoqi_version),
+                key="type",
+            )
+        versions = [version for k, version in robots if k == kind]
+        version = self.version if self.version is not None else versions[0]
+        if version not in versions:
+            raise ConfigError(
+                f"NAOqi {naoqi_version} does not run a {kind} {version}; it runs: "
+                + _robot_names(naoqi_version),
+                key="version",
+            )
+        return RobotSettings(type=kind, version=version)  # type: ignore[arg-type]
+
+    @classmethod
+    def parse(cls, data: Any, path: str) -> Self:
+        def optional(value: Any) -> str | None:
+            return None if value is None else _as_str(value)
+
+        return _parse_block(cls, data, path, {"type": optional, "version": optional})
+
+
+@dataclass(frozen=True)
+class SetupSettings(_Loaders):
+    """How the robot is set up: its language packs, and its state when the sim is ready
     (specs/container/autonomous-life.md, "The state at boot"): its posture, whether its stiffness
     is on (all joints, as after `wakeUp()`) or off (as after `rest()`), whether Autonomous Life
     runs (`solitary`), and its language. The default is a NAO in English whose Life does not
     start at boot, at rest."""
 
-    posture: RobotPosture = "crouch"
-    stiffness_on: bool = False
-    life_on: bool = False
     # The installed language packs, as a NAO's: what getAvailableLanguages answers and
     # setLanguage accepts, on the speech, the recognition and the dialog (`LANGUAGES`)
     available_languages: tuple[str, ...] = ("English", "French")
     # The language at boot, one of available_languages
     language: str = "English"
+    posture: RobotPosture = "crouch"
+    stiffness_on: bool = False
+    life_on: bool = False
 
     def __post_init__(self) -> None:
         _check_choice(self.posture, RobotPosture, "posture")
@@ -306,11 +381,11 @@ class RobotSettings(_Loaders):
             data,
             path,
             {
+                "available_languages": _as_str_tuple,
+                "language": _as_str,
                 "posture": _as_str,
                 "stiffness_on": _as_bool,
                 "life_on": _as_bool,
-                "available_languages": _as_str_tuple,
-                "language": _as_str,
             },
         )
 
@@ -425,7 +500,8 @@ class VideoInputSettings(_Loaders):
 class ViewerSettings(_Loaders):
     """The simulated world (naoqi-viewer's sim mode, specs/host/viewer.md)."""
 
-    headless: bool = False
+    # No window by default: a config that renders no camera then needs no `viewer` extra
+    headless: bool = True
     scene: str = (
         "empty"  # a bundled scene name ("empty", "table") or an MJCF file (.xml)
     )
@@ -520,10 +596,12 @@ class ControlsSettings(_Loaders):
 
 @dataclass(frozen=True)
 class NaoqiSimConfig(_Loaders):
-    """A simulated NAO: its NAOqi, its engines, its host devices and its viewer."""
+    """A simulated NAO: its NAOqi, which robot it is, how it is set up, its engines, its host
+    devices and its viewer."""
 
-    naoqi: NaoqiSettings = field(default_factory=NaoqiSettings)
+    naoqi: NaoqiSettings  # required: its version has no default
     robot: RobotSettings = field(default_factory=RobotSettings)
+    setup: SetupSettings = field(default_factory=SetupSettings)
     audio_output: AudioOutputSettings = field(default_factory=AudioOutputSettings)
     audio_input: AudioInputSettings = field(default_factory=AudioInputSettings)
     video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
@@ -535,11 +613,16 @@ class NaoqiSimConfig(_Loaders):
     controls: ControlsSettings = field(default_factory=ControlsSettings)
 
     def __post_init__(self) -> None:
-        if self.robot.posture == "sit" and self.naoqi.version == "2.8":
+        try:
+            robot = self.robot.for_naoqi(self.naoqi.version)
+        except ConfigError as e:
+            raise e.within("robot") from None
+        object.__setattr__(self, "robot", robot)
+        if self.setup.posture == "sit" and self.naoqi.version == "2.8":
             raise ConfigError(
                 "the 2.8 sim cannot reliably sit (naoqi-fidelity.md: its desktop suite has no "
                 "inertial sensor); 'sit' is for 2.1",
-                key="robot.posture",
+                key="setup.posture",
             )
 
     @classmethod
@@ -551,6 +634,7 @@ class NaoqiSimConfig(_Loaders):
             {
                 "naoqi": lambda d: NaoqiSettings.parse(d, "naoqi"),
                 "robot": lambda d: RobotSettings.parse(d, "robot"),
+                "setup": lambda d: SetupSettings.parse(d, "setup"),
                 "audio_output": lambda d: AudioOutputSettings.parse(d, "audio_output"),
                 "audio_input": lambda d: AudioInputSettings.parse(d, "audio_input"),
                 "video_input": lambda d: VideoInputSettings.parse(d, "video_input"),

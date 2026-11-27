@@ -81,9 +81,6 @@ COPY --from=image-data animations.pkg /opt/naoqi/share/naoqi/apps/animations.pkg
 # feedback (the listening bips and LEDs, the LED states Life asks for).
 COPY --from=image-data altactilegesture.pkg signs-and-feedback.pkg /opt/naoqi/share/naoqi/apps/
 
-# The desktop 2.8 suite defaults to Pepper's model; make the virtual robot a NAO H25 V6.
-RUN sed -i 's/JULIETTEY20B2C.xml/NAOH25V60.xml/' /opt/naoqi/etc/naoqi/ALRobotModel.xml
-
 # Robot software in the image (specs/container/container.md): the robot's /usr/bin/python2 and python,
 # the suite's own interpreter (2.7.8, which its qi bindings are built for), its libraries known to the
 # linker after the system's, so it also starts with an empty environment; a NAO 6's /data/home; and

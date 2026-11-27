@@ -26,7 +26,7 @@ from naoqi_sim.config import (
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
-    RobotSettings,
+    SetupSettings,
     SpeechRecognitionSettings,
     VideoInputSettings,
     ViewerSettings,
@@ -44,6 +44,15 @@ from naoqi_sim.errors import (
 from naoqi_sim.host_link import encode, read_message
 
 HEADLESS = ViewerSettings(headless=True)
+WINDOW = ViewerSettings(headless=False)
+
+
+def sim_config(**blocks) -> NaoqiSimConfig:
+    """A config on NAOqi 2.1, unless `blocks` names its own `naoqi`."""
+    blocks.setdefault("naoqi", NaoqiSettings(version="2.1"))
+    return NaoqiSimConfig(**blocks)
+
+
 RENDER = VideoInputSettings(
     top=CameraSettings(source="render"), bottom=CameraSettings(source="render")
 )
@@ -147,8 +156,8 @@ def play(port: int, seconds: float = 0.2, rate: int = 8000) -> None:
 
 def test_start_runs_the_robot_and_stop_takes_it_down(env):
     sink = MemorySink()
-    config = NaoqiSimConfig(
-        robot=RobotSettings(
+    config = sim_config(
+        setup=SetupSettings(
             available_languages=("English", "French"), language="French"
         ),
         viewer=HEADLESS,
@@ -189,14 +198,12 @@ def test_start_runs_the_robot_and_stop_takes_it_down(env):
 
 
 def test_a_version_string_is_the_one_liner():
-    assert sim.NaoqiSim("2.8").config == NaoqiSimConfig(
-        naoqi=NaoqiSettings(version="2.8")
-    )
+    assert sim.NaoqiSim("2.8").config == sim_config(naoqi=NaoqiSettings(version="2.8"))
 
 
 def test_async_with_runs_the_version_and_stops_it(env):
     naoqisim = sim.NaoqiSim(
-        NaoqiSimConfig(naoqi=NaoqiSettings(version="2.8"), viewer=HEADLESS),
+        sim_config(naoqi=NaoqiSettings(version="2.8"), viewer=HEADLESS),
         sink=MemorySink(),
     )
 
@@ -213,17 +220,17 @@ def test_async_with_runs_the_version_and_stops_it(env):
 
 
 def test_the_window_runs_the_viewer_and_stop_closes_it(env):
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=WINDOW), sink=MemorySink())
     asyncio.run(naoqisim.start())
     asyncio.run(naoqisim.stop())
 
     settings, url = env.viewer.config
-    assert settings == ViewerSettings() and url == "tcp://127.0.0.1:9559"
+    assert settings == WINDOW and url == "tcp://127.0.0.1:9559"
     assert env.viewer.events == ["launch viewer-config", "close"]
 
 
 def test_the_render_camera_runs_after_the_viewer_and_stops_before_it(env):
-    config = NaoqiSimConfig(video_input=RENDER, viewer=HEADLESS)
+    config = sim_config(video_input=RENDER, viewer=HEADLESS)
     naoqisim = sim.NaoqiSim(config, sink=MemorySink())
     asyncio.run(naoqisim.start())
     deadline = time.monotonic() + 2
@@ -248,7 +255,7 @@ def test_the_render_camera_runs_after_the_viewer_and_stops_before_it(env):
 
 def test_a_viewer_that_cannot_launch_never_starts_the_camera(env):
     env.viewer.launch_fails = True
-    config = NaoqiSimConfig(video_input=RENDER, viewer=HEADLESS)
+    config = sim_config(video_input=RENDER, viewer=HEADLESS)
     with pytest.raises(RuntimeError, match="no display"):
         asyncio.run(sim.NaoqiSim(config, sink=MemorySink()).start())
     assert env.viewer.events == ["launch viewer-config", "close"]
@@ -301,7 +308,7 @@ def webcams(top: int | None = 0, bottom: int | None = None) -> VideoInputSetting
 
 def test_a_webcam_that_cannot_open_fails_before_anything_starts(env, camera):
     camera.opening = False
-    config = NaoqiSimConfig(video_input=webcams(top=None, bottom=1), viewer=HEADLESS)
+    config = sim_config(video_input=webcams(top=None, bottom=1), viewer=HEADLESS)
     with pytest.raises(
         DeviceUnavailableError,
         match=r"^video_input.bottom.source 'webcam': webcam 1 does not open",
@@ -313,7 +320,7 @@ def test_a_webcam_that_cannot_open_fails_before_anything_starts(env, camera):
 
 
 def test_a_webcam_feeds_a_headless_robot_without_the_viewer(env, camera):
-    config = NaoqiSimConfig(video_input=webcams(top=0), viewer=HEADLESS)
+    config = sim_config(video_input=webcams(top=0), viewer=HEADLESS)
     naoqisim = sim.NaoqiSim(config, sink=MemorySink())
     asyncio.run(naoqisim.start())
     deadline = time.monotonic() + 5
@@ -339,7 +346,7 @@ def test_a_webcam_feeds_a_headless_robot_without_the_viewer(env, camera):
 
 
 def test_two_cameras_on_one_webcam_share_its_capture(env, camera):
-    config = NaoqiSimConfig(video_input=webcams(top=0, bottom=0), viewer=HEADLESS)
+    config = sim_config(video_input=webcams(top=0, bottom=0), viewer=HEADLESS)
     naoqisim = sim.NaoqiSim(config, sink=MemorySink())
     asyncio.run(naoqisim.start())
     deadline = time.monotonic() + 5
@@ -358,7 +365,7 @@ def test_missing_images_fail_before_anything_starts(env, monkeypatch):
 
     monkeypatch.setattr(docker_images, "check_images", missing)
     with pytest.raises(ImagesMissingError):
-        asyncio.run(sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS)).start())
+        asyncio.run(sim.NaoqiSim(sim_config(viewer=HEADLESS)).start())
     assert compose_calls(env) == []
 
 
@@ -368,15 +375,13 @@ def test_a_missing_viewer_extra_fails_before_anything_starts(env, monkeypatch):
 
     monkeypatch.setattr(sim, "viewer_config", no_extra)
     with pytest.raises(MissingExtraError, match=r"naoqi-sim\[viewer\]"):
-        asyncio.run(sim.NaoqiSim(NaoqiSimConfig(), sink=MemorySink()).start())
+        asyncio.run(sim.NaoqiSim(sim_config(viewer=WINDOW), sink=MemorySink()).start())
     assert compose_calls(env) == []
 
 
 @pytest.mark.parametrize("which", ["NAOQI_PORT", "AUDIO_OUTPUT_PORT", "HOST_LINK_PORT"])
 def test_a_taken_port_fails_before_anything_starts(env, which):
-    config = NaoqiSimConfig(
-        viewer=HEADLESS, audio_input=AudioInputSettings(source="fake")
-    )
+    config = sim_config(viewer=HEADLESS, audio_input=AudioInputSettings(source="fake"))
     with socket.socket() as s:
         s.bind(("127.0.0.1", getattr(sim, which)))
         s.listen()
@@ -389,7 +394,7 @@ def test_the_host_link_port_is_free_to_use_without_an_audio_input(env):
     with socket.socket() as s:
         s.bind(("127.0.0.1", sim.HOST_LINK_PORT))
         s.listen()
-        naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+        naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
         asyncio.run(naoqisim.start())
         asyncio.run(naoqisim.stop())
 
@@ -403,7 +408,7 @@ def test_the_fake_audio_input_serves_the_link_from_boot_to_stop(env, monkeypatch
         return up(config)
 
     monkeypatch.setattr(stack, "up", recording_up)
-    config = NaoqiSimConfig(
+    config = sim_config(
         viewer=HEADLESS,
         video_input=RENDER,
         audio_input=AudioInputSettings(source="fake", mono="silence"),
@@ -443,7 +448,7 @@ def test_the_fake_audio_input_serves_the_link_from_boot_to_stop(env, monkeypatch
 
 
 def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
-    config = NaoqiSimConfig(
+    config = sim_config(
         viewer=HEADLESS,
         video_input=VideoInputSettings(top=CameraSettings(source="render")),
         audio_input=AudioInputSettings(source="fake", mono="silence"),
@@ -499,9 +504,7 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
 def test_without_the_perception_engine_its_container_is_neither_started_nor_awaited(
     env, caplog
 ):
-    config = NaoqiSimConfig(
-        viewer=HEADLESS, perception=PerceptionSettings(enabled=False)
-    )
+    config = sim_config(viewer=HEADLESS, perception=PerceptionSettings(enabled=False))
     env.set(perception_health="exited")  # would fail the start if it were awaited
     naoqisim = sim.NaoqiSim(config, sink=MemorySink())
     with caplog.at_level(logging.INFO, logger="naoqi_sim"):
@@ -522,7 +525,7 @@ def test_without_the_perception_engine_its_container_is_neither_started_nor_awai
 
 def test_a_perception_engine_that_dies_fails_the_start(env):
     env.set(perception_health="exited")
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
     with pytest.raises(BootError, match="perception engine did not start"):
         asyncio.run(naoqisim.start())
     assert not naoqisim.running
@@ -532,7 +535,7 @@ def test_a_perception_engine_that_dies_fails_the_start(env):
 def test_without_the_speech_recognition_engine_its_container_is_neither_started_nor_awaited(
     env, caplog
 ):
-    config = NaoqiSimConfig(
+    config = sim_config(
         viewer=HEADLESS, speech_recognition=SpeechRecognitionSettings(enabled=False)
     )
     env.set(asr_health="exited")  # would fail the start if it were awaited
@@ -551,7 +554,7 @@ def test_without_the_speech_recognition_engine_its_container_is_neither_started_
 
 def test_a_speech_recognition_engine_that_dies_fails_the_start(env):
     env.set(asr_health="exited")
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
     with pytest.raises(BootError, match="speech recognition engine did not start"):
         asyncio.run(naoqisim.start())
     assert not naoqisim.running
@@ -559,7 +562,7 @@ def test_a_speech_recognition_engine_that_dies_fails_the_start(env):
 
 
 def test_fake_audio_needs_the_fake_source(env):
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
     asyncio.run(naoqisim.start())
     try:
         with pytest.raises(NaoqiSimError, match="not 'fake'"):
@@ -575,9 +578,7 @@ def test_a_microphone_that_cannot_open_fails_before_anything_starts(env, monkeyp
         )
 
     monkeypatch.setattr(sim, "check_mic", no_mic)
-    config = NaoqiSimConfig(
-        viewer=HEADLESS, audio_input=AudioInputSettings(source="mic")
-    )
+    config = sim_config(viewer=HEADLESS, audio_input=AudioInputSettings(source="mic"))
     with pytest.raises(DeviceUnavailableError, match="no default input device"):
         asyncio.run(sim.NaoqiSim(config).start())
     assert compose_calls(env) == []
@@ -587,7 +588,7 @@ def test_a_microphone_that_cannot_open_fails_before_anything_starts(env, monkeyp
 @pytest.mark.parametrize("boot", ["exited", "unhealthy"])
 def test_a_failed_boot_stops_what_was_started(env, boot):
     env.set(boot=boot)
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
 
     with pytest.raises(BootError, match="did not boot"):
         asyncio.run(naoqisim.start())
@@ -598,7 +599,9 @@ def test_a_failed_boot_stops_what_was_started(env, boot):
 
 def test_a_boot_slower_than_the_timeout_fails(env):
     env.set(boot="starting")
-    config = NaoqiSimConfig(naoqi=NaoqiSettings(ready_timeout_s=0.1), viewer=HEADLESS)
+    config = sim_config(
+        naoqi=NaoqiSettings(version="2.1", ready_timeout_s=0.1), viewer=HEADLESS
+    )
     with pytest.raises(BootError, match="not healthy after"):
         asyncio.run(sim.NaoqiSim(config, sink=MemorySink()).start())
     assert env.read()["containers"] == {}
@@ -607,7 +610,7 @@ def test_a_boot_slower_than_the_timeout_fails(env):
 def test_a_viewer_that_cannot_launch_stops_everything(env):
     env.viewer.launch_fails = True
     with pytest.raises(RuntimeError, match="no display"):
-        asyncio.run(sim.NaoqiSim(NaoqiSimConfig(), sink=MemorySink()).start())
+        asyncio.run(sim.NaoqiSim(sim_config(viewer=WINDOW), sink=MemorySink()).start())
     assert env.viewer.events == ["launch viewer-config", "close"]
     assert env.read()["containers"] == {}
     assert not listening(sim.AUDIO_OUTPUT_PORT)
@@ -619,7 +622,7 @@ def test_a_cancelled_start_stops_what_was_started(env):
     env.set(boot="starting", up_s=0.5)
 
     async def run():
-        naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+        naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
         task = asyncio.create_task(naoqisim.start())
         while not listening(sim.AUDIO_OUTPUT_PORT) or not any(
             " up " in c for c in compose_calls(env)
@@ -639,7 +642,7 @@ def test_a_cancelled_start_stops_what_was_started(env):
 def test_start_twice_is_an_error(env):
     async def run():
         async with sim.NaoqiSim(
-            NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink()
+            sim_config(viewer=HEADLESS), sink=MemorySink()
         ) as naoqisim:
             with pytest.raises(NaoqiSimError, match="already running"):
                 await naoqisim.start()
@@ -648,7 +651,7 @@ def test_start_twice_is_an_error(env):
 
 
 def test_stop_carries_on_through_a_failure_and_raises_it(env, monkeypatch, caplog):
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
     asyncio.run(naoqisim.start())
 
     def down_fails(version):
@@ -667,7 +670,7 @@ def test_stop_carries_on_through_a_failure_and_raises_it(env, monkeypatch, caplo
 
 def test_record_mode_writes_the_audio_to_a_wav_file(env, tmp_path):
     path = tmp_path / "played.wav"
-    config = NaoqiSimConfig(
+    config = sim_config(
         audio_output=AudioOutputSettings(mode="record", record=path), viewer=HEADLESS
     )
     naoqisim = sim.NaoqiSim(config)
@@ -681,14 +684,14 @@ def test_record_mode_writes_the_audio_to_a_wav_file(env, tmp_path):
 
 
 def test_constructing_does_nothing(env):
-    sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS))
+    sim.NaoqiSim(sim_config(viewer=HEADLESS))
     time.sleep(0.05)
     assert env.calls == []
     assert not listening(sim.AUDIO_OUTPUT_PORT)
 
 
 def test_props_are_the_worlds_while_running(env):
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=WINDOW), sink=MemorySink())
     with pytest.raises(NotRunningError):
         naoqisim.props  # noqa: B018
     asyncio.run(naoqisim.start())
@@ -701,7 +704,7 @@ def test_props_are_the_worlds_while_running(env):
 
 
 def test_props_need_a_viewer(env):
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
     asyncio.run(naoqisim.start())
     try:
         with pytest.raises(NaoqiSimError, match="runs no viewer"):
@@ -711,7 +714,7 @@ def test_props_need_a_viewer(env):
 
 
 def test_the_touch_input_runs_with_the_robot_and_releases_at_stop(env):
-    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
     with pytest.raises(NotRunningError):
         naoqisim.touch  # noqa: B018
     assert naoqisim.controls_url is None  # the controls are off by default
@@ -731,7 +734,7 @@ def test_the_touch_input_runs_with_the_robot_and_releases_at_stop(env):
 
 def test_the_controls_serve_while_running_and_cover_a_fed_camera(env):
     port = free_port()
-    config = NaoqiSimConfig(
+    config = sim_config(
         viewer=HEADLESS,
         video_input=VideoInputSettings(top=CameraSettings(source="render")),
         controls=ControlsSettings(enabled=True, port=port),
@@ -760,7 +763,7 @@ def test_a_taken_controls_port_fails_before_anything_starts(env):
         taken.bind(("127.0.0.1", 0))
         taken.listen()
         port = taken.getsockname()[1]
-        config = NaoqiSimConfig(
+        config = sim_config(
             viewer=HEADLESS, controls=ControlsSettings(enabled=True, port=port)
         )
         with pytest.raises(PortInUseError):

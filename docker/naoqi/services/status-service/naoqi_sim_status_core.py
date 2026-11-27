@@ -8,6 +8,7 @@ Used by naoqi_sim_status_almodule (2.1, ALModule) and naoqi_sim_status_qiservice
 Kept importable under Python 3 so the host's fast tests cover it.
 """
 import os
+import re
 
 SERVICE = "NaoqiSim"
 PREFIX = "NaoqiSim/"
@@ -26,6 +27,25 @@ def versions(env=None):
         env.get("NAOQI_SIM_VERSION") or DEFAULT_VERSION,
         env.get("NAOQI_SIM_NAOQI_VERSION") or UNKNOWN,
     )
+
+
+# A model file's entries: `<Preference ... memoryName="<key>" ... value="<value>" ... />`
+_ROBOT_KEY = re.compile(r'<Preference\b[^>]*\bmemoryName="([^"]+)"[^>]*\bvalue="([^"]*)"')
+
+
+def robot_keys(path):
+    """The ALMemory keys the suite's model file at `path` gives the robot, with their values, in
+    the file's order: `RobotConfig/Body/Type`, `RobotConfig/Body/Version` and the rest, which a
+    robot's NAOqi publishes and the desktop one does not. Nothing without a readable file."""
+    if not path:
+        return []
+    try:
+        with open(path) as f:
+            text = f.read()
+    except (IOError, OSError):
+        return []
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    return _ROBOT_KEY.findall(text)
 
 
 class Status(object):
@@ -54,6 +74,11 @@ class Status(object):
         # What robot software inside the container reaches on 127.0.0.1:9559: `naoqi` as on a robot,
         # `gateway` on a 2.8 host that refused the entrypoint's redirect (container.md, "Network layout")
         insert(PREFIX + "Loopback9559", env.get("NAOQI_SIM_LOOPBACK_9559") or UNKNOWN)
+        # The robot's own keys, as on a robot: what the model file the entrypoint chose lists
+        # (specs/container/status-service.md, "The robot's keys")
+        self.robot_keys = robot_keys(env.get("NAOQI_SIM_ROBOT_MODEL_FILE"))
+        for key, value in self.robot_keys:
+            insert(key, value)
         raise_event(PREFIX + "Ready", 0)
 
     def set_ready(self):

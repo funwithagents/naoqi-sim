@@ -73,6 +73,30 @@ write_autoload() {
     }' "$suite" > "$AUTOLOAD" || fail "writing $AUTOLOAD failed"
 }
 
+# robot_model <this NAOqi's default robot version>: the robot the config names (NAOQI_SIM_ROBOT_TYPE
+# and NAOQI_SIM_ROBOT_VERSION; a NAO of the default version without them), as the suite's model
+# file, which NAOqi's model preference is pointed at before NAOqi starts. Exports the file's path:
+# the status module publishes the RobotConfig keys it lists (specs/container/container.md, "The
+# robot model"; specs/container/status-service.md, "The robot's keys").
+robot_model() {
+  local type=${NAOQI_SIM_ROBOT_TYPE:-nao} version=${NAOQI_SIM_ROBOT_VERSION:-$1} file
+  local preference=$NAOQI_HOME/etc/naoqi/ALRobotModel.xml copy=${TMPDIR:-/tmp}/ALRobotModel.xml
+  case $type-$version in
+    nao-v4) file=NAOH25V40.xml ;;
+    nao-v5) file=NAOH25V50.xml ;;
+    nao-v6) file=NAOH25V60.xml ;;
+    *) fail "unknown robot: $type $version" ;;
+  esac
+  NAOQI_SIM_ROBOT_MODEL_FILE=$NAOQI_HOME/share/alrobotmodel/models/$file
+  [ -f "$NAOQI_SIM_ROBOT_MODEL_FILE" ] || fail "this NAOqi has no $type $version: no model file $file"
+  [ -f "$preference" ] || fail "no model preference $preference"
+  sed "s/value=\"[^\"]*\.xml\"/value=\"$file\"/" "$preference" > "$copy" \
+    && grep -q "value=\"$file\"" "$copy" && cat "$copy" > "$preference" \
+    || fail "pointing $preference at $file failed"
+  export NAOQI_SIM_ROBOT_MODEL_FILE
+  log "robot: $type $version ($file)"
+}
+
 # loopback_to_naoqi <NAOqi's port>: robot software connects to 127.0.0.1:9559, which a robot's NAOqi
 # serves and 2.8's gateway holds on the sim. Redirect the container's own connections there to NAOqi,
 # once (container.md, "Network layout"). A host that refuses the NET_ADMIN capability leaves the
@@ -219,7 +243,7 @@ move() {
   out=$(QICLI_TIMEOUT=$MOVE_TIMEOUT call "$@" 2>&1) || fail "$1 failed: $out"
 }
 
-# robot_state: the robot as the config's robot block asks when the sim is ready
+# robot_state: the robot as the config's setup block asks when the sim is ready
 # (specs/container/autonomous-life.md, "The state at boot"): Life first, since switching it on
 # stands the robot up, then the posture, then the stiffness. The config has refused the
 # combinations a NAO cannot be in.

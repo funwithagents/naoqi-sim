@@ -17,7 +17,7 @@ from conftest import live_config
 from support import recorded_sentences, say_to_the_robot, wait_until
 
 from naoqi_sim import NaoqiSim
-from naoqi_sim.config import RobotSettings
+from naoqi_sim.config import SetupSettings
 
 PACKAGES = Path(__file__).parent / "packages"
 DIALOG = "naoqi_sim_test_dialog"
@@ -139,7 +139,7 @@ def test_the_same_in_french_on_a_sim_that_boots_in_french(nao, tmp_path):
     default = nao.sim
     nao.stop()
     nao.sim = NaoqiSim(
-        live_config(nao.version.name, robot=RobotSettings(language="French")),
+        live_config(nao.version.name, setup=SetupSettings(language="French")),
         sink=nao.sink,
     )
     try:

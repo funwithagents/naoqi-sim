@@ -59,13 +59,11 @@ class NaoqiSim:
 
     def __init__(
         self,
-        config: NaoqiSimConfig | NaoqiVersion | None = None,
+        config: NaoqiSimConfig | NaoqiVersion,
         *,
         sink: AudioSink | None = None,
     ):
-        if config is None:
-            config = NaoqiSimConfig()
-        elif isinstance(config, str):
+        if isinstance(config, str):
             config = NaoqiSimConfig(naoqi=NaoqiSettings(version=config))
         self._config = config
         self._sink = sink if sink is not None else _sink_for(config)

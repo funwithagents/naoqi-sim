@@ -14,6 +14,7 @@ tests:
   - tests/test_status_core.py
   - tests/test_entrypoint.py
   - tests-e2e/test_status_live.py
+  - tests-e2e/test_robot_model_live.py
 ---
 
 # NaoqiSim status service and healthcheck
@@ -63,6 +64,21 @@ The module writes these at load. All values are plain strings except `NaoqiSim/R
 | `NaoqiSim/Life/LaunchpadPeople` | The `Launchpad/` keys naoqi-sim writes in the robot's plugins' place, comma-separated (`Launchpad/NumPeopleZone1,...`) | Nobody: the launchpad people module writes it at load ([launchpad-people.md](../services/launchpad-people.md)) |
 
 - `none` means no host device is attached to that service, so it serves nothing (no frames, no audio), or, for the perception key, no engine behind the modules (they answer and find nobody). The device specs own the other values and may add keys under the same prefixes; the host writes them as an ordinary qi client, as the overview's "Host services" prescribes. The two perception keys are written inside the container by the modules themselves, as the entrypoint's environment says. `status()` reads `NaoqiSim/Perception/Source` as `perception_source` and `NaoqiSim/SpeechRecognition/Source` as `speech_recognition_source` ([api.md](../runtime/api.md)). `NaoqiSim/Perception/Source` existed before Oct 9, 2026 as a host device's key and was dropped when perception was left to the clients; it is back with another meaning.
+
+### The robot's keys
+
+A robot's NAOqi publishes what the robot is under `RobotConfig/` (`RobotConfig/Body/Type` is `Nao` and `RobotConfig/Body/Version` `5.0.0` on a NAO V5, as read on one); the desktop NAOqi loads the same model file and publishes none of it. The status module publishes them in its place, at load, right after its own keys: every key the model file the entrypoint chose lists, with the file's value, as a string ([container.md](container.md), "The robot model"; the file's path comes in `NAOQI_SIM_ROBOT_MODEL_FILE`).
+
+| Key | NAO V4 | NAO V5 | NAO V6 |
+| --- | --- | --- | --- |
+| `RobotConfig/Body/Type`, `RobotConfig/Head/Type` | `Nao` | `Nao` | `Nao` |
+| `RobotConfig/Body/Version`, `RobotConfig/Head/Version` | `4.0.0` | `5.0.0` | `6.0.0` |
+| `RobotConfig/Body/BaseVersion`, `RobotConfig/Head/BaseVersion` (deprecated, the files say) | `V4.0` | `V5.0` | Not in the file |
+
+- These are the robot's own names, not `NaoqiSim/` ones: a client reads which robot it is on the same way on a NAO and on naoqi-sim, and `NaoqiSim/` stays for what only a simulator has. Nothing under `NaoqiSim/` repeats them.
+- **Everything the file lists**, not a chosen few: the hardware versions (`RobotConfig/Body/Device/Hand/Left/Version`, `.../Legs/Version`, `RobotConfig/Head/Device/Camera/Version`...), `RobotConfig/Body/SoftwareRequirement` and, on a V4 or V5, the file's placeholder identity: `RobotConfig/Head/HeadId` `0000`, `Device/DeviceList/ChestBoard/BodyId` `00000ALDR1008E000000` and `Device/DeviceList/ChestBoard/BodyNickName` `Nao0000` (the Get Body ID box reads the body id). The V6 file has no identity and no `BaseVersion`.
+- A commented-out entry is not published. Without the variable or the file (the module run outside the entrypoint), no robot key is published and the module loads all the same.
+- Written once, after NAOqi's own modules have loaded their model, and none of them reacts to the keys appearing: the live tier passes on both versions with them published (Nov 27, 2026), as a NAO V5, a V6 and, for a boot, a wake-up and a stand, a V4.
 
 ### Readiness
 

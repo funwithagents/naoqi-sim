@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import server
 
-from naoqi_sim.config import SPEECH_LANGUAGES, RobotSettings
+from naoqi_sim.config import SPEECH_LANGUAGES, SetupSettings
 
 # Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
 pytestmark = pytest.mark.container_code
@@ -66,7 +66,7 @@ def pause(ms):
 def test_the_engine_and_the_config_name_the_same_languages():
     """The config refuses a language the engine has no voice for, so the two lists are one."""
     assert tuple(server.VOICES) == SPEECH_LANGUAGES
-    assert server.DEFAULT_LANGUAGES == RobotSettings().available_languages
+    assert server.DEFAULT_LANGUAGES == SetupSettings().available_languages
 
 
 def test_the_image_bakes_the_default_languages_voices_from_the_pinned_release():
