@@ -84,7 +84,7 @@ How naoqi-sim is verified, locally and in CI.
 | Spec | Description | Status |
 |---|---|---|
 | [testing.md](testing/testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Implemented |
-| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAOQI_SIM_E2E_VERSION` turning skips into failures, a headless viewer; a PulseAudio loopback for the audio tests; the Python 2.7 check | Implemented |
+| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAOQI_SIM_E2E_VERSION` turning skips into failures, a headless viewer; a PulseAudio loopback for the audio tests; the Python 2.7 check; a daily check that Aldebaran's downloads are still served at their pinned URLs | Implemented |
 
 [_overview.md](_overview.md) is the overview of naoqi-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: the capability probe and the asset guard (both deferred), and the perception measurements kept for clients.
 

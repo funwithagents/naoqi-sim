@@ -2,9 +2,12 @@
 code:
   - .github/workflows/ci.yml
   - .github/workflows/e2e-windows.yml
+  - .github/workflows/image-data-check.yml
+  - src/naoqi_sim/suite.py
   - tests-e2e/support.py
   - tests-e2e/conftest.py
 tests:
+  - tests/test_suite.py
   - tests-e2e/test_modules_live.py
   - tests-e2e/test_audio_loopback_live.py
 ---
@@ -76,6 +79,22 @@ A second workflow, `.github/workflows/e2e-windows.yml`, runs the live tier on Wi
 - **No image cache** yet: each run fetches and builds, as on a user's machine. Measured cold ([run 38410829728](https://github.com/funwithagents/naoqi-sim/actions/runs/38410829728)): 17 minutes for 2.1 (54 passed, 6 skipped) and 19 for 2.8 (55 passed, 5 skipped); 2.8 leaves 21 GB in WSL's virtual disk, with 32 GB free on `C:` before the run.
 - **Expected skips**: the audio loopback tests (no virtual sound device on Windows), the sim window (no display), and as on Linux the sound set and, on 2.1, the `languageTTS` test. Any other skip is a fault.
 - Not a required check. The macOS live tier has no counterpart: GitHub's macOS runners give a Linux VM no nested virtualization to start in (as far as known, not probed) and have no OpenGL, so it runs on developers' Macs.
+
+### The daily image data check
+
+A third workflow, `.github/workflows/image-data-check.yml`, asks every day whether the files the NAOqi images are built from are still served at their pinned URLs ([container.md](../container/container.md), "Image data and licensing"). They are Aldebaran's, on its GitHub repositories and its download site, and nothing says they stay there. The image cache hides them from `ci.yml`: a hit downloads nothing, so a file taken offline would go unnoticed until the next cold build, or a user's first `fetch-and-build-images`.
+
+- **Scheduled** (`cron: "0 9 * * *"`, 09:00 UTC: 10 am in Paris in winter, 11 am in summer, a cron being in UTC; in the working day, so a failure is seen when it happens) and startable by hand (`workflow_dispatch`); never on a pull request or a push, which have nothing to say about Aldebaran's servers. GitHub may start a schedule some minutes late, more so on the hour. Its own file, so it does not run the jobs of `ci.yml` every day. GitHub runs a schedule from the default branch only, and disables it after 60 days without activity in a public repository (it sends an email first; re-enable it in the Actions tab).
+- **What is asked**: the six downloads pinned in `src/naoqi_sim/suite.py`, each version's suite, robot image and C++ SDK. The files extracted from a robot image (`animations.pkg`, 2.8's Life configuration and packages) have no URL of their own.
+- **A HEAD request each, nothing downloaded** (`suite.check_image_data`): a few seconds for the 4.5 GB the six files weigh. A file is there when:
+  - the answer is a 200;
+  - its `Content-Length` is the size pinned beside the hash (`PinnedFile.size`), which tells the file from a Git LFS pointer or an error page served with a 200;
+  - its `ETag`, when it is a SHA-256, is the pinned hash. GitHub's LFS storage answers with the file's SHA-256 as its ETag (measured Nov 27, 2026, on the five files it serves), so for those the check is on the content, not only on the size. Aldebaran's download site (2.1's SDK) gives another kind of ETag, which is not compared.
+- **Three tries, 10 s apart**, before a file counts as unavailable, so a passing network fault does not raise the alarm.
+- **On a failure** the job is red and, on a scheduled run, opens an issue titled "The image data are unavailable" with the check's output and a link to the run, through the job's own token (`issues: write`; no secret). While that issue is open the following days add nothing to it. A run started by hand opens no issue.
+- **The full hashes** stay the cold build's job: `fetch-and-build-images` hashes every byte it downloads, on a runner at each cache miss and on every user's machine.
+- **Not covered**: the engines' models (Piper's voices on Hugging Face, the Vosk models, YuNet), which their projects publish and each engine's image build or first use fetches; and the NAO meshes, which are naoqi-viewer's download.
+- Not a required check: it runs on no pull request.
 
 ### Expected skips
 

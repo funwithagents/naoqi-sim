@@ -1,0 +1,68 @@
+# The daily image data check — specs/testing/ci.md, "The daily image data check".
+#
+# The NAOqi images are built from files Aldebaran publishes (the Choregraphe suites, the robot
+# images, the C++ SDKs), at the URLs pinned in src/naoqi_sim/suite.py. The image cache hides them
+# from ci.yml: a cache hit downloads nothing, so a file taken offline would go unnoticed until
+# the next cold build, or a user's first one. Every morning this asks each URL, with a HEAD request
+# and no download, whether it still serves the pinned file. A failure opens an issue.
+# Not part of ci.yml: a pull request has nothing to say about Aldebaran's servers.
+
+name: Image data check
+
+on:
+  schedule:
+    # Every day at 09:00 UTC: 10 am in Paris in winter, 11 am in summer (a cron is in UTC).
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write # the issue a failure opens
+
+jobs:
+  image-data-check:
+    name: the pinned image data are available
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      ISSUE_TITLE: The image data are unavailable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Sync (against the lock)
+        run: uv sync --locked
+      - name: Ask every pinned URL
+        run: |
+          set -o pipefail
+          uv run python -c "
+          import sys
+          from naoqi_sim import suite
+          sys.exit(bool(suite.check_image_data()))" 2>&1 | tee "$RUNNER_TEMP/image-data-check.log"
+      # One open issue at a time: the days after the first leave it as it is, and the job
+      # stays red until the pins are fixed or the files are back.
+      - name: Open an issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open=$(gh issue list --state open --limit 500 --json number,title \
+            --jq "[.[] | select(.title == \"$ISSUE_TITLE\")][0].number // empty")
+          if [ -n "$open" ]; then
+            echo "Issue #$open is already open."
+            exit 0
+          fi
+          {
+            echo "The daily check found that a file the NAOqi images are built from is no longer served at its pinned URL (\`src/naoqi_sim/suite.py\`): \`naoqi-sim fetch-and-build-images\` fails for the versions below, on any machine that does not hold the file already."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/image-data-check.log" 2>/dev/null || echo "(the check did not run: see the run's log)"
+            echo '```'
+          } > "$RUNNER_TEMP/issue.md"
+          gh issue create --title "$ISSUE_TITLE" --body-file "$RUNNER_TEMP/issue.md"

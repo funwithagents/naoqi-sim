@@ -18,6 +18,9 @@ final name once the hash matches. Each verified file's size, modification time a
 recorded in `<image-data>/hashes.json`, so a file that has not changed since is not hashed again
 (the 2.8 suite alone is 1.3 GB).
 
+`check_image_data` asks each pinned URL, with a HEAD request and no download, whether it still
+serves the pinned file: what CI runs every day (specs/testing/ci.md, "The daily image data check").
+
 The robot image (`.opn`) is a 4096-byte `ALDIMAGE` header, an installer shell script whose
 variables locate the payload, then the compressed ext3 root filesystem (bzip2 on 2.1, gzip on
 2.8). It is decompressed here and streamed into a throwaway Alpine container, whose `debugfs`
@@ -34,6 +37,8 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -62,6 +67,9 @@ class PinnedFile:
     url: str
     sha256: str
     name: str | None = None  # saved under this name instead of the URL's last part
+    size: int | None = (
+        None  # in bytes: what the image data check expects as Content-Length
+    )
 
     @property
     def filename(self) -> str:
@@ -113,11 +121,13 @@ VERSIONS = {
             _V5
             + "Choregraphe/Linux/Binaries/choregraphe-suite-2.1.4.13-linux64.tar.gz",
             "bad0212956e2223f36736cff33bdc1e008311b8bf9efd81a52dcf05895c8abce",
+            size=430_850_260,
         ),
         PinnedFile(
             _V5
             + "NAOqi%202.1.4.13/NAOqi%20Images/opennao-atom-system-image-2.1.4.13_2015-08-27.opn",
             "5d18427ba6f5199d30cf29941b20ad5fa6a06b8f64a29126953cdfa33dbb9a24",
+            size=376_985_600,
         ),
         "/usr/share/naoqi/apps/animations.pkg",  # version 5.0.9
         "a1d46221f5f28b91c8e7564ade4532f390e5911f14210787b3352a84c2b507e1",
@@ -125,6 +135,7 @@ VERSIONS = {
             PinnedFile(
                 _SDK + "2.1.4.13/sdk-c%2B%2B/naoqi-sdk-2.1.4.13-linux64.tar.gz",
                 "a1669524819088b7aac82e04450e2c5dce6ffdd11c968444db89b6831955683b",
+                size=333_867_205,
             ),
         ),
     ),
@@ -133,10 +144,12 @@ VERSIONS = {
         PinnedFile(
             _V6 + "choregraphe-suite-2.8.7.4-linux64.tar.gz",
             "edf95da2ae8ec7573e3a590b6db47a472f9d2733280a4a597841fbf0c1e6c63c",
+            size=1_330_448_842,
         ),
         PinnedFile(
             _V6 + "nao-x86-2.8.7.4_20210820_094013.opn",
             "d82e5dd221712555f20c430f3ebcbe46825d5179f1bc0e2594629489855e24a4",
+            size=731_909_120,
         ),
         "/opt/aldebaran/share/naoqi/apps/animations.pkg",  # version 7.0.3
         "8866ddf4bb45eab79068cfe5746c66f3b8f507356fd93affed204bc834002f2c",
@@ -145,6 +158,7 @@ VERSIONS = {
             PinnedFile(
                 _V6_SDK + "naoqi-sdk-2.8.7.4-linux64.tar.gz",
                 "e42c8b95e6e3de349cf76100d006a9f5b48bd625f0236b0a0fe094fc29970967",
+                size=1_345_290_750,
             ),
         ),
         PackagedFile(
@@ -275,6 +289,55 @@ def fetch_file(f: PinnedFile, folder: Path) -> Path:
         _log(f"downloading {f.url}")
         _write(_download(f.url), dest, f.sha256, f.url)
     return dest
+
+
+def download_problem(f: PinnedFile, timeout: float = 30.0) -> str | None:
+    """Why `f`'s URL does not serve the pinned file, or None when it does. A HEAD request:
+    nothing is downloaded. The answer must be a 200 with the pinned size, when one is pinned;
+    and GitHub's LFS storage gives a file's SHA-256 as its ETag, which must then be the pinned
+    one (another server's ETag, which is not a SHA-256, says nothing)."""
+    request = urllib.request.Request(f.url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as r:
+            headers = r.headers
+    except urllib.error.HTTPError as e:
+        return f"HTTP {e.code} {e.reason}"
+    except OSError as e:  # no route, no name, a timeout, a refused connection
+        return f"no answer ({e})"
+    length = headers.get("Content-Length")
+    if f.size is not None and length != str(f.size):
+        return f"Content-Length is {length}, expected {f.size}"
+    etag = (headers.get("ETag") or "").removeprefix("W/").strip('"').lower()
+    if re.fullmatch(r"[0-9a-f]{64}", etag) and etag != f.sha256:
+        return f"the server's SHA-256 is {etag}, expected {f.sha256}"
+    return None
+
+
+def check_image_data(
+    versions: Iterable[Version] | None = None,
+    attempts: int = 3,
+    pause: float = 10.0,
+    timeout: float = 30.0,
+) -> list[str]:
+    """Ask every pinned URL of `versions` (all of them by default) whether it still serves its
+    file: the suite, the robot image and the build files. Returns one line per file that does
+    not, after `attempts` tries `pause` seconds apart, so a passing network fault is not a
+    missing file. Empty when every download is there."""
+    problems = []
+    for version in VERSIONS.values() if versions is None else versions:
+        for f in (version.suite, version.image, *version.build_files):
+            problem = download_problem(f, timeout)
+            for _ in range(attempts - 1):
+                if problem is None:
+                    break
+                time.sleep(pause)
+                problem = download_problem(f, timeout)
+            if problem is None:
+                _log(f"available: {f.url}")
+            else:
+                _log(f"UNAVAILABLE: {f.url}: {problem}")
+                problems.append(f"NAOqi {version.name}: {f.url}: {problem}")
+    return problems
 
 
 @dataclass(frozen=True)
