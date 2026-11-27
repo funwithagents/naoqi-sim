@@ -23,6 +23,8 @@ from naoqi_sim.suite import (
     PinnedFile,
     RobotPackage,
     Version,
+    check_image_data,
+    download_problem,
     fetch,
     opn_payload,
     rootfs_chunks,
@@ -431,6 +433,123 @@ def test_leaves_a_mismatching_local_file_alone(origin, tmp_path):
         fetch(version(origin), tmp_path, echo_cat)
     assert (tmp_path / "2.1" / "suite.tar.gz").read_bytes() == lfs_pointer
     assert origin.requests == []
+
+
+class Heads:
+    """A local stand-in for the download servers that answers HEAD only, each path with the next
+    of its answers (the last one from then on): a status and headers. It has no GET, so a check
+    that downloaded anything would fail."""
+
+    def __init__(self, answers: dict[str, list[tuple[int, dict[str, str]]]]):
+        heads = self
+        self.answers = answers
+        self.requests: list[str] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_HEAD(self):
+                heads.requests.append(self.path)
+                left = heads.answers[self.path]
+                status, headers = left.pop(0) if len(left) > 1 else left[0]
+                self.send_response(status)
+                for key, value in headers.items():
+                    self.send_header(key, value)
+                self.end_headers()
+
+            def log_message(self, format, *args):
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+SHA = sha(b"the pinned file")
+SERVED = (200, {"Content-Length": "1000", "ETag": f'"{SHA}"'})
+GONE = (404, {"Content-Length": "0"})
+
+
+@pytest.fixture
+def heads():
+    h = Heads(
+        {
+            "/suite.tar.gz": [SERVED],
+            "/nao%20image.opn": [SERVED],
+            "/sdk.tar.gz": [
+                # as Aldebaran's download site: an ETag that is not a SHA-256
+                (200, {"Content-Length": "1000", "ETag": '"c0f11b2df693dc59-4"'})
+            ],
+            "/gone.tar.gz": [GONE],
+            "/flaky.tar.gz": [(503, {}), SERVED],
+        }
+    )
+    yield h
+    h.close()
+
+
+def pinned(heads: Heads, path: str, sha256: str = SHA, size: int = 1000) -> PinnedFile:
+    return PinnedFile(heads.base + path, sha256, size=size)
+
+
+def pinned_version(heads: Heads, suite: str = "/suite.tar.gz") -> Version:
+    return Version(
+        "2.1",
+        pinned(heads, suite),
+        pinned(heads, "/nao%20image.opn"),
+        "/usr/share/naoqi/apps/animations.pkg",
+        sha(PKG),
+        (pinned(heads, "/sdk.tar.gz"),),
+    )
+
+
+def test_the_image_data_check_passes_when_every_pinned_file_is_served(heads):
+    assert check_image_data([pinned_version(heads)], pause=0) == []
+    # the suite, the robot image and the build file, asked once each, nothing downloaded
+    assert heads.requests == ["/suite.tar.gz", "/nao%20image.opn", "/sdk.tar.gz"]
+
+
+def test_the_image_data_check_names_a_file_that_is_gone(heads):
+    problems = check_image_data([pinned_version(heads, "/gone.tar.gz")], pause=0)
+    assert problems == [f"NAOqi 2.1: {heads.base}/gone.tar.gz: HTTP 404 Not Found"]
+    assert heads.requests.count("/gone.tar.gz") == 3  # asked again before giving up
+
+
+def test_the_image_data_check_forgives_a_passing_fault(heads):
+    assert check_image_data([pinned_version(heads, "/flaky.tar.gz")], pause=0) == []
+    assert heads.requests.count("/flaky.tar.gz") == 2
+
+
+def test_a_url_serving_another_size_is_a_problem(heads):
+    # what an LFS pointer or an error page served with a 200 looks like
+    problem = download_problem(pinned(heads, "/suite.tar.gz", size=430_850_260))
+    assert problem == "Content-Length is 1000, expected 430850260"
+
+
+def test_a_url_whose_sha256_etag_is_another_file_is_a_problem(heads):
+    other = sha(b"another file")
+    problem = download_problem(pinned(heads, "/suite.tar.gz", sha256=other))
+    assert problem == f"the server's SHA-256 is {SHA}, expected {other}"
+
+
+def test_an_etag_that_is_not_a_sha256_is_not_compared(heads):
+    assert download_problem(pinned(heads, "/sdk.tar.gz")) is None
+
+
+def test_a_server_that_does_not_answer_is_a_problem(heads):
+    f = pinned(heads, "/suite.tar.gz")
+    heads.close()
+    problem = download_problem(f, timeout=2)
+    assert problem is not None and problem.startswith("no answer")
+
+
+def test_every_real_download_has_its_size_pinned():
+    # without a size, the check of a server with no SHA-256 ETag would accept any 200
+    for v in VERSIONS.values():
+        for f in (v.suite, v.image, *v.build_files):
+            assert f.size and f.size > 100_000_000, f.url
 
 
 @pytest.mark.parametrize("name", ["2.1", "2.8"])
