@@ -8,7 +8,9 @@ and checks names. The fakes sit first on PATH. `qicli` logs every invocation, li
 without a name, answers `info NAME` with failure while NAME is down (a module that did not load),
 hangs on the `info` calls `FAKE_QICLI_HANG` numbers (`first-last`), and serves
 `NaoqiSim.setReady` and `NaoqiSim.isReady` in either suite's output style.
-`naoqi-bin` records its arguments and the environment the loader reads.
+`naoqi-bin` records its arguments and the environment the loader reads. `iptables` logs its
+arguments, knows the one rule it was given, and refuses to add it when `FAKE_IPTABLES_REFUSE` is set
+(a host without the NET_ADMIN capability); `hostname -I` answers `FAKE_HOSTNAME_I`.
 """
 
 import os
@@ -87,10 +89,39 @@ FAKE_NAOQI_BIN = textwrap.dedent(
     echo "${NAOQI_SIM_INTERNAL_PORT:-unset}" > "$FAKE_DIR/naoqi-bin.port"
     echo "${NAOQI_SIM_PYTHON_MODULES:-unset}" > "$FAKE_DIR/naoqi-bin.modules"
     echo "${NAOQI_SIM_MODULES_DIR:-unset}" > "$FAKE_DIR/naoqi-bin.modules-dir"
+    echo "${NAOQI_SIM_LOOPBACK_9559:-unset}" > "$FAKE_DIR/naoqi-bin.loopback"
     [ -n "${FAKE_NAOQI_EXIT:-}" ] && exit "$FAKE_NAOQI_EXIT"
     trap 'exit 0' TERM INT
     while :; do sleep 0.1; done
     """
+)
+
+FAKE_IPTABLES = textwrap.dedent(
+    """\
+    #!/bin/bash
+    echo "$@" >> "$FAKE_DIR/iptables.log"
+    case " $* " in
+      *" -C "*) [ -e "$FAKE_DIR/iptables.rule" ] ;;
+      *" -A "*)
+        if [ -n "${FAKE_IPTABLES_REFUSE:-}" ]; then
+          echo "iptables v1.6.0: can't initialize iptables table nat: Permission denied" >&2
+          exit 3
+        fi
+        touch "$FAKE_DIR/iptables.rule" ;;
+    esac
+    """
+)
+
+FAKE_HOSTNAME = textwrap.dedent(
+    """\
+    #!/bin/bash
+    [ "$1" = -I ] && printf '%s\\n' "${FAKE_HOSTNAME_I:-}"
+    """
+)
+
+# The rule that makes 127.0.0.1:9559 NAOqi inside the 2.8 container (container.md, "Network layout").
+LOOPBACK_RULE = (
+    "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport 9559 -j REDIRECT --to-ports 9558"
 )
 
 # A suite autoload with every entry either version's entrypoint edits.
@@ -265,6 +296,8 @@ class Fakes:
         self.bin.mkdir(parents=True)
         (self.bin / "qicli").write_text(f"#!{sys.executable}\n{FAKE_QICLI}")
         (self.bin / "naoqi-bin").write_text(FAKE_NAOQI_BIN)
+        (self.bin / "iptables").write_text(FAKE_IPTABLES)
+        (self.bin / "hostname").write_text(FAKE_HOSTNAME)
         for f in self.bin.iterdir():
             f.chmod(0o755)
         self.naoqi_home = tmp_path / "naoqi"
@@ -296,8 +329,12 @@ class Fakes:
 
     def naoqi_bin(self, what: str) -> str:
         """What naoqi-bin got: its arguments (`args`), or the environment it and naoqi-service
-        inherit (`port`, `modules`, `modules-dir`)."""
+        inherit (`port`, `modules`, `modules-dir`, `loopback`)."""
         return (self.dir / f"naoqi-bin.{what}").read_text().strip()
+
+    def iptables(self) -> list[str]:
+        log = self.dir / "iptables.log"
+        return log.read_text().splitlines() if log.exists() else []
 
     def started_naoqi(self) -> bool:
         return (self.dir / "naoqi-bin.args").exists()
@@ -646,3 +683,62 @@ def test_fails_when_a_vision_module_cannot_be_put_in_2d(fakes, version):
     assert ep.wait_exit() == 1
     assert "ALMovementDetection._setDetectionMode 2D failed" in ep.output()
     assert not [c for c in fakes.calls() if "setReady" in c]
+
+
+def test_2_8_makes_the_loopback_naoqi_before_naoqi_starts(fakes):
+    ep = Entrypoint(fakes, "2.8")
+    ep.wait_for_ready()
+    assert fakes.iptables() == [
+        f"-w -t nat -C {LOOPBACK_RULE}",
+        f"-w -t nat -A {LOOPBACK_RULE}",
+    ]
+    assert fakes.naoqi_bin("loopback") == "naoqi"  # what the status module publishes
+    assert "127.0.0.1:9559 is NAOqi" in ep.output()
+
+
+def test_2_8_adds_the_rule_once(fakes):
+    (fakes.dir / "iptables.rule").touch()  # a restarted container that kept it
+    ep = Entrypoint(fakes, "2.8")
+    ep.wait_for_ready()
+    assert fakes.iptables() == [f"-w -t nat -C {LOOPBACK_RULE}"]
+    assert fakes.naoqi_bin("loopback") == "naoqi"
+
+
+def test_2_8_boots_on_when_the_host_refuses_the_redirect(fakes):
+    ep = Entrypoint(fakes, "2.8", {"FAKE_IPTABLES_REFUSE": "1"})
+    ep.wait_for_ready()
+    assert fakes.naoqi_bin("loopback") == "gateway"
+    assert "127.0.0.1:9559 stays the gateway: iptables v1.6.0" in ep.output()
+    assert calls_only(fakes) == expected_calls("2.8")  # the rest of the boot as usual
+
+
+def test_2_1_needs_no_redirect(fakes):
+    ep = Entrypoint(fakes, "2.1")
+    ep.wait_for_ready()
+    assert fakes.iptables() == []
+    assert fakes.naoqi_bin("loopback") == "naoqi"  # its broker is 9559
+
+
+@pytest.mark.parametrize(
+    ("addresses", "url"),
+    [
+        ("192.168.97.5 ", "tcp://192.168.97.5:9559"),
+        ("172.18.0.3 10.0.0.2", "tcp://172.18.0.3:9559"),
+        ("", "tcp://127.0.0.1:9559"),
+    ],
+)
+def test_2_8_healthcheck_goes_through_the_gateway_on_the_containers_address(
+    fakes, addresses, url
+):
+    env = fakes.env(
+        {
+            "FAKE_QICLI_STYLE": "2.8",
+            "NAOQI_SIM_HEALTH_VIA": "address",
+            "FAKE_HOSTNAME_I": addresses,
+        }
+    )
+    (fakes.dir / "ready").touch()
+    assert (
+        subprocess.run(["bash", str(HEALTHCHECK)], env=env, check=False).returncode == 0
+    )
+    assert fakes.calls() == [f"call NaoqiSim.isReady --qi-url {url}"]

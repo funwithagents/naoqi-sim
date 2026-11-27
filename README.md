@@ -24,8 +24,8 @@ Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4; its findings are fo
 - `src/naoqi_sim/audio_output.py`: the host audio output a `NaoqiSim` runs, the robot's loudspeakers as its sound server: it mixes the named streams the containers send (the `speech` stream, one `player:<id>` per sound) at 48 kHz stereo, and the mix goes to a sink: the output device, nothing (`silent`), a WAV file (`record`) or memory (tests, which also keeps each stream).
 - `src/naoqi_sim/audio_input.py`, `host_link.py`: the robot's microphones, served to `ALAudioDevice` over the host link (port 9563): the host microphone (`audio_input.source = "mic"`) or the fake source (`"fake"`: silence plus what code plays with `sim.fake_audio.play("hello.wav")`, for tests). Either way the robot hears its own voice, as a NAO does.
 - `src/naoqi_sim/files.py`: where the recipes (`docker/`, shipped in the wheel as package data) and the image data are, in a checkout or installed.
-- `src/naoqi_sim/docker_images.py` and `src/naoqi_sim/suite.py`: `naoqi-sim fetch-and-build-images`, which fills the image data folder (`docker/image-data/<version>/` in a checkout) with the pinned Choregraphe suite, the `animations` package extracted from the public robot image and the relay's build files (the version's C++ SDK, 334 MB for 2.1 and 1.3 GB for 2.8), all public and hash-checked; it keeps what is already there, builds the images with the naoqi-sim version as label, and boots them once to verify them (`docker/image-data/images.json`).
-- `docker/image-data/`: gitignored; `2.1/` and `2.8/` each hold the suite tarball, `animations.pkg` and the relay's build files; `images.json` lists the verified images.
+- `src/naoqi_sim/docker_images.py` and `src/naoqi_sim/suite.py`: `naoqi-sim fetch-and-build-images`, which fills the image data folder (`docker/image-data/<version>/` in a checkout) with the pinned Choregraphe suite, the `animations` package extracted from the public robot image (on 2.8 also a NAO's Life configuration and the robot's `altactilegesture` and `signs-and-feedback` packages) and the relay's build files (the version's C++ SDK, 334 MB for 2.1 and 1.3 GB for 2.8), all public and hash-checked; it keeps what is already there, builds the images with the naoqi-sim version as label, and boots them once to verify them (`docker/image-data/images.json`).
+- `docker/image-data/`: gitignored; `2.1/` and `2.8/` each hold the suite tarball, `animations.pkg` and the relay's build files (`2.8/` also `autonomy.cfg`, `altactilegesture.pkg` and `signs-and-feedback.pkg`); `images.json` lists the verified images.
 - `docker/compose.yaml`: also a package store volume per version, so packages installed over qi or Choregraphe (the sound set) survive `docker compose down`; `down -v` resets them.
 - `tests/`, `tests-e2e/`: the fast tier and the live tier, which starts the containers itself.
 
@@ -35,6 +35,10 @@ Python 3.12 or 3.13 on macOS (arm64), Linux (x86_64) or Windows (x64): the libqi
 [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python)'s package index,
 `https://funwithagents.github.io/libqi-python/simple/`) exist for those only. The containers need
 Docker (Docker Desktop on macOS and Windows; Windows is not tested end to end yet).
+The 2.8 container asks Docker for the `NET_ADMIN` capability on its own network, so that robot
+packages inside it find NAOqi on `127.0.0.1:9559` as on a robot; a host that refuses it still runs
+the sim, and only the services those packages register stay out of reach
+([container.md](specs/container/container.md), "Network layout").
 
 ```bash
 uv sync --dev

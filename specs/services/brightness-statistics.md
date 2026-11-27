@@ -48,7 +48,7 @@ With the two keys raised by a client ten times a second in place of the service,
 | touched | dark | 3.5 s | the robot asleep (`AutonomousLife/Asleep` 1), the activity stopped |
 
 - **The keys may come late.** At its start Life's condition checker logs that the two keys do not exist and evaluate to false "until it exists"; when they first appear it logs that they are found, and the rules work. So the service has no boot order to respect.
-- **A failed call does not stop a rule.** On a default sim three of the rule's calls fail: the two sounds (no sound set), `ALSignsAndFeedback.triggerBit` (not in the desktop suite), and `_ALBrightnessStatistics._start` and `_stop` themselves before this service exists. Life logs each and carries on to `StopAll`.
+- **A failed call does not stop a rule.** On a default sim three of the rule's calls fail: the two sounds (no sound set) and `_ALBrightnessStatistics._start` and `_stop` themselves before this service exists. `ALSignsAndFeedback.triggerBit`, which failed too (not in the desktop suite), answers since the image has the robot's package ([container.md](../container/container.md), "Robot packages in the image"). Life logs each and carries on to `StopAll`.
 
 ### The service
 
@@ -70,4 +70,4 @@ Every question left is a deferral.
 
 1. **The rate.** Ten times a second fits rules timed to 0.1 s, and is what the measurement fed; what it costs inside the 2.8 NAOqi under emulation is to measure.
 2. **Other readers.** Nothing else on the 2.8 image is known to read the two keys.
-3. **The feedback a robot gives.** The validation and confirmation sounds need the sound set, which stays the user's to install, and the LED reset needs the robot's `signs-and-feedback` package; without them the gesture works silently.
+3. **The feedback a robot gives.** The validation and confirmation sounds need the sound set, which stays the user's to install; without it the gesture works silently. The LED reset is the robot's `signs-and-feedback` package's, installed in the 2.8 image.

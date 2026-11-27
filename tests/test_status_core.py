@@ -22,7 +22,11 @@ class FakeMemory:
         self.events.append((key, value))
 
 
-ENV = {"NAOQI_SIM_VERSION": "0.3.1", "NAOQI_SIM_NAOQI_VERSION": "2.8.7.4"}
+ENV = {
+    "NAOQI_SIM_VERSION": "0.3.1",
+    "NAOQI_SIM_NAOQI_VERSION": "2.8.7.4",
+    "NAOQI_SIM_LOOPBACK_9559": "naoqi",
+}
 
 
 def test_publishes_versions_and_idle_sources_at_load():
@@ -43,7 +47,21 @@ def test_publishes_versions_and_idle_sources_at_load():
         "NaoqiSim/Perception/Source": "none",
         "NaoqiSim/Perception/Stubs": "",
         "NaoqiSim/SpeechRecognition/Source": "none",
+        "NaoqiSim/Loopback9559": "naoqi",
     }
+
+
+@pytest.mark.parametrize(
+    ("set_by_entrypoint", "published"),
+    [("naoqi", "naoqi"), ("gateway", "gateway"), (None, "unknown")],
+)
+def test_publishes_what_robot_software_reaches_on_the_loopback(
+    set_by_entrypoint, published
+):
+    env = {**ENV, "NAOQI_SIM_LOOPBACK_9559": set_by_entrypoint or ""}
+    memory = FakeMemory()
+    core.Status(memory.insert, memory.raise_event, env=env)
+    assert memory.data["NaoqiSim/Loopback9559"] == published
 
 
 def test_versions_default_when_the_image_sets_none():

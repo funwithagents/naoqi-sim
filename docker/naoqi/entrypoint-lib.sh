@@ -73,6 +73,23 @@ write_autoload() {
     }' "$suite" > "$AUTOLOAD" || fail "writing $AUTOLOAD failed"
 }
 
+# loopback_to_naoqi <NAOqi's port>: robot software connects to 127.0.0.1:9559, which a robot's NAOqi
+# serves and 2.8's gateway holds on the sim. Redirect the container's own connections there to NAOqi,
+# once (container.md, "Network layout"). A host that refuses the NET_ADMIN capability leaves the
+# port to the gateway: logged, and the boot goes on. Exports what 127.0.0.1:9559 is for the status
+# module (NaoqiSim/Loopback9559).
+loopback_to_naoqi() {
+  local spec="OUTPUT -o lo -p tcp -d 127.0.0.1 --dport 9559 -j REDIRECT --to-ports $1" err
+  if iptables -w -t nat -C $spec 2>/dev/null || err=$(iptables -w -t nat -A $spec 2>&1); then
+    NAOQI_SIM_LOOPBACK_9559=naoqi
+    log "127.0.0.1:9559 is NAOqi: the container's own connections there go to port $1"
+  else
+    NAOQI_SIM_LOOPBACK_9559=gateway
+    log "127.0.0.1:9559 stays the gateway: ${err:-iptables failed} (no NET_ADMIN capability?)"
+  fi
+  export NAOQI_SIM_LOOPBACK_9559
+}
+
 # start_naoqi <url the entrypoint reaches NAOqi on> <naoqi-bin arguments...>
 start_naoqi() {
   URL=$1

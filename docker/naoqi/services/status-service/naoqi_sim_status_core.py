@@ -35,6 +35,8 @@ class Status(object):
     subscribers of that key (ALMemory.insertData / ALMemory.raiseEvent on the real thing)."""
 
     def __init__(self, insert, raise_event, env=None):
+        if env is None:
+            env = os.environ
         self.version, self.naoqi_version = versions(env)
         self.ready = False
         self._raise_event = raise_event
@@ -49,6 +51,9 @@ class Status(object):
         insert(PREFIX + "Perception/Stubs", "")
         # ALSpeechRecognition overwrites it at its load (specs/services/speech-recognition.md)
         insert(PREFIX + "SpeechRecognition/Source", NONE)
+        # What robot software inside the container reaches on 127.0.0.1:9559: `naoqi` as on a robot,
+        # `gateway` on a 2.8 host that refused the entrypoint's redirect (container.md, "Network layout")
+        insert(PREFIX + "Loopback9559", env.get("NAOQI_SIM_LOOPBACK_9559") or UNKNOWN)
         raise_event(PREFIX + "Ready", 0)
 
     def set_ready(self):

@@ -24,6 +24,7 @@ LAST="ALDialog"                           # registered last at boot (dialog, the
 
 write_autoload "$LEFT_OUT" "pythonbridge:$OURS" $ADDED_ENTRIES
 export NAOQI_SIM_PYTHON_MODULES="$MODULES" NAOQI_SIM_MODULES_DIR="$NAOQI_HOME/modules"
+export NAOQI_SIM_LOOPBACK_9559=naoqi  # the broker is 9559, inside as outside (NaoqiSim/Loopback9559)
 start_naoqi tcp://127.0.0.1:9559 -b 0.0.0.0 -p 9559 --autoload-file "$AUTOLOAD" "$@"
 wait_for_naoqi ALLauncher ALPythonBridge $LAST
 check_answer replaced $REPLACED
