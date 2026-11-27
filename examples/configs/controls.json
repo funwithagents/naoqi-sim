@@ -1,4 +1,0 @@
-{
-  "video_input": { "top": { "source": "render" }, "bottom": { "source": "render", "fps": 5 } },
-  "controls": { "enabled": true, "open": true }
-}

@@ -234,50 +234,29 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
 
 def test_the_example_files_load():
     names = sorted(p.name for p in EXAMPLES.glob("*.json"))
-    assert names == [
-        "2.8.json",
-        "ci.json",
-        "controls.json",
-        "default.json",
-        "headless.json",
-        "languages.json",
-        "life.json",
-        "mic.json",
-        "webcam.json",
-    ]
-    default = NaoqiSimConfig.from_json_file(EXAMPLES / "default.json")
-    assert default == NaoqiSimConfig()
-    assert NaoqiSimConfig.from_json_file(EXAMPLES / "2.8.json") == NaoqiSimConfig(
-        naoqi=NaoqiSettings(version="2.8")
-    )
-    headless = NaoqiSimConfig.from_json_file(EXAMPLES / "headless.json")
-    assert headless.viewer.headless and headless.audio_output.mode == "silent"
+    assert names == ["2.1.json", "2.8.json", "ci.json"]
+    # The basic use, one file per version: every block written out, the robot hearing the
+    # microphone, seeing the webcam on its top camera and the render on its bottom one, both
+    # displays in the window, the controls opened; the rest at its defaults.
+    for version in ("2.1", "2.8"):
+        path = EXAMPLES / f"{version}.json"
+        assert NaoqiSimConfig.from_json_file(path) == NaoqiSimConfig(
+            naoqi=NaoqiSettings(version=version),
+            audio_input=AudioInputSettings(source="mic"),
+            video_input=VideoInputSettings(
+                top=CameraSettings(source="webcam"),
+                bottom=CameraSettings(source="render"),
+            ),
+            viewer=ViewerSettings(cameras_display=True, people_display=True),
+            controls=ControlsSettings(enabled=True, open=True),
+        )
+        assert set(json.loads(path.read_text())) == set(NaoqiSimConfig().to_dict())
     ci = NaoqiSimConfig.from_json_file(EXAMPLES / "ci.json")
     assert ci.viewer == ViewerSettings(headless=True, variant="placeholder")
     assert ci.video_input.sources == {"top": "render", "bottom": "render"}
     assert ci.video_input.rates == {"top": 15, "bottom": 5}
     assert ci.audio_output.mode == "silent"
     assert ci.audio_input.source == "fake"
-    languages = NaoqiSimConfig.from_json_file(EXAMPLES / "languages.json")
-    assert languages.robot.available_languages == ("English", "French", "German")
-    assert languages.robot.language == "French"
-    life = NaoqiSimConfig.from_json_file(EXAMPLES / "life.json")
-    assert life == NaoqiSimConfig(
-        robot=RobotSettings(posture="stand", stiffness_on=True, life_on=True)
-    )
-    mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
-    assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))
-    controls = NaoqiSimConfig.from_json_file(EXAMPLES / "controls.json")
-    assert controls.controls == ControlsSettings(enabled=True, open=True)
-    assert controls.video_input.sources == {"top": "render", "bottom": "render"}
-    webcam = NaoqiSimConfig.from_json_file(EXAMPLES / "webcam.json")
-    assert webcam == NaoqiSimConfig(
-        video_input=VideoInputSettings(
-            top=CameraSettings(source="webcam", device=0),
-            bottom=CameraSettings(source="render"),
-        ),
-        viewer=ViewerSettings(cameras_display=True),
-    )
 
 
 def test_a_language_is_available_only_with_its_language_pack():
