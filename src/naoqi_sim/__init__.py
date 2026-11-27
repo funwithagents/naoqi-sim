@@ -17,6 +17,7 @@ from naoqi_sim.config import (
     AudioOutputMode,
     AudioOutputSettings,
     ConfigError,
+    ControlsSettings,
     MonoPolicy,
     NaoqiSettings,
     NaoqiSimConfig,
@@ -33,6 +34,7 @@ from naoqi_sim.config import (
 from naoqi_sim.docker_images import check_images, fetch_and_build_images
 from naoqi_sim.errors import (
     BootError,
+    CameraNotFedError,
     DeviceNotBuiltError,
     DeviceUnavailableError,
     DockerUnavailableError,
@@ -63,8 +65,10 @@ __all__ = [
     "AudioOutputSettings",
     "AudioSink",
     "BootError",
+    "CameraNotFedError",
     "ConfigError",
     "ContainerState",
+    "ControlsSettings",
     "DeviceNotBuiltError",
     "DevicePlayer",
     "DeviceUnavailableError",

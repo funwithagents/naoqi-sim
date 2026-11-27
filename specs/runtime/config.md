@@ -10,6 +10,7 @@ code:
   - examples/configs/webcam.json
   - examples/configs/languages.json
   - examples/configs/life.json
+  - examples/configs/controls.json
 tests:
   - tests/test_config.py
   - tests/test_project_map.py
@@ -39,7 +40,9 @@ This config is the **host-level** description. The container keeps its own inter
   "audio_input": { "source": "none", "mono": "duplicate" },
   "video_input": { "top": { "source": "none", "fps": 15, "device": 0 }, "bottom": { "source": "none", "fps": 15, "device": 0 } },
   "viewer": { "headless": false, "scene": "empty", "variant": "auto", "cameras_display": false, "people_display": false },
-  "perception": { "enabled": true }
+  "perception": { "enabled": true },
+  "speech_recognition": { "enabled": true },
+  "controls": { "enabled": false, "port": 9564, "open": false }
 }
 ```
 
@@ -56,6 +59,7 @@ class NaoqiSimConfig:
     speech_recognition: SpeechRecognitionSettings = field(
         default_factory=SpeechRecognitionSettings
     )
+    controls: ControlsSettings = field(default_factory=ControlsSettings)
 
 
 @dataclass
@@ -155,6 +159,15 @@ class SpeechRecognitionSettings:
 
     # False starts no `asr` container: ALSpeechRecognition still answers and hears nothing
     enabled: bool = True
+
+
+@dataclass
+class ControlsSettings:
+    """The controls page and its HTTP API (controls.md)."""
+
+    enabled: bool = False
+    port: int = 9564  # on 127.0.0.1 only
+    open: bool = False  # open the page in the default browser once the robot is ready
 ```
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
@@ -170,7 +183,7 @@ class SpeechRecognitionSettings:
 - Every config class has the same three constructors: `from_dict(data)`, `from_json(text)` (parses, then calls `from_dict`), and `from_json_file(path)` (reads, then calls `from_json`; an invalid-JSON error names the path). All three share one validation path.
 - Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio_output.record`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
 - **Unknown keys are errors**, so a typo fails when the config loads.
-- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; a camera's `fps` is an integer from 1 to 30 (a NAO camera's maximum) and its `device` a non-negative integer; `viewer.scene` is a non-empty string; `robot.available_languages` is a non-empty list of distinct names, each with a language pack (`LANGUAGES`), so a language NAOqi supports but naoqi-sim cannot hear or speak (`Japanese`, `Danish`) fails at load, naming the languages that have one; `robot.language` is one of them. In code a list is accepted and kept as a tuple.
+- **Type and range checks:** each `Literal` field takes one of its values; `controls.port` is an integer from 1 to 65535; `ready_timeout_s` is a positive, finite number; a camera's `fps` is an integer from 1 to 30 (a NAO camera's maximum) and its `device` a non-negative integer; `viewer.scene` is a non-empty string; `robot.available_languages` is a non-empty list of distinct names, each with a language pack (`LANGUAGES`), so a language NAOqi supports but naoqi-sim cannot hear or speak (`Japanese`, `Danish`) fails at load, naming the languages that have one; `robot.language` is one of them. In code a list is accepted and kept as a tuple.
 - **Cross-field checks at load:** the `robot` block takes only the states a NAO can be in, each refusal saying why ([autonomous-life.md](../container/autonomous-life.md), "The state at boot"): `posture: "stand"` needs `stiffness_on` (a NAO cannot stand with its stiffness off: that state is `crouch`), `life_on` needs `stiffness_on` and a `posture` of `stand` or `sit` (Life stands the robot up), and `sit` needs `naoqi.version` 2.1 (the 2.8 sim cannot reliably sit); `audio_output.mode = "record"` needs `audio_output.record`; `viewer.cameras_display` and `viewer.people_display` are refused with `viewer.headless` (the pictures and the markers are drawn in the window, as naoqi-viewer refuses them). Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
 - **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists, a language's voice can be fetched: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `naoqi_viewer`, nor `sounddevice`.
@@ -182,6 +195,10 @@ class SpeechRecognitionSettings:
 ### The speech recognition engine
 
 `speech_recognition.enabled` (default `true`) runs the `asr` container with the stack, so `ALSpeechRecognition` recognises for real what the microphones hear ([asr-engine.md](../container/asr-engine.md), [speech-recognition.md](../services/speech-recognition.md)); `NaoqiSim.start()` waits for it after the perception engine. `false` starts no container and the module hears nothing, as a NAO in a silent room; `ALDialog` then answers `forceInput` only. The module is always loaded. Like the perception switch, it is the engine's, not a device block.
+
+### The controls
+
+`controls.enabled` (default `false`) serves the controls page and its HTTP API on `127.0.0.1:<port>` while the robot runs, and `open` opens it in the default browser once the robot is ready ([controls.md](../host/controls.md)). Off by default: a library caller and a test drive the touch input and the camera cover in Python. The touch input itself has no block: it is always on ([touch-input.md](../host/touch-input.md)).
 
 ### The video input: one block per camera
 
@@ -227,6 +244,7 @@ JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, a
 - `default.json`: 2.1, window, speech only;
 - `2.8.json`: the same on 2.8;
 - `headless.json`: 2.1, no window, silent audio output (servers);
+- `controls.json`: 2.1, window, both cameras on `render` (the bottom one at 5 fps), the controls on and opened in the browser: a person touching the robot, covering its camera, and doing the gesture that stops an activity;
 - `ci.json`: 2.1, headless viewer with the placeholder variant, both cameras on `render` (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
 - `life.json`: 2.1, window, the robot standing with Autonomous Life on when the sim is ready, as a NAO whose Life starts at boot;
 - `mic.json`: 2.1, window, speech on the loudspeaker, `audio_input.source = "mic"`: the robot hears the room, its own voice included, as a NAO does;

@@ -13,6 +13,7 @@ from naoqi_sim.config import (
     AudioOutputSettings,
     CameraSettings,
     ConfigError,
+    ControlsSettings,
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
@@ -236,6 +237,7 @@ def test_the_example_files_load():
     assert names == [
         "2.8.json",
         "ci.json",
+        "controls.json",
         "default.json",
         "headless.json",
         "languages.json",
@@ -265,6 +267,9 @@ def test_the_example_files_load():
     )
     mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
     assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))
+    controls = NaoqiSimConfig.from_json_file(EXAMPLES / "controls.json")
+    assert controls.controls == ControlsSettings(enabled=True, open=True)
+    assert controls.video_input.sources == {"top": "render", "bottom": "render"}
     webcam = NaoqiSimConfig.from_json_file(EXAMPLES / "webcam.json")
     assert webcam == NaoqiSimConfig(
         video_input=VideoInputSettings(
@@ -389,3 +394,19 @@ def test_the_2_8_sim_cannot_sit():
     assert (
         NaoqiSimConfig.from_dict({"robot": {"posture": "sit"}}).robot.posture == "sit"
     )
+
+
+def test_the_controls_are_off_unless_the_config_turns_them_on():
+    assert NaoqiSimConfig().controls == ControlsSettings(
+        enabled=False, port=9564, open=False
+    )
+    config = NaoqiSimConfig.from_dict({"controls": {"enabled": True, "port": 8000}})
+    assert config.controls == ControlsSettings(enabled=True, port=8000)
+    assert config.to_dict()["controls"] == {
+        "enabled": True,
+        "port": 8000,
+        "open": False,
+    }
+    assert error_for({"controls": {"port": 0}}).key == "controls.port"
+    assert error_for({"controls": {"enabled": "yes"}}).key == "controls.enabled"
+    assert error_for({"controls": {"page": True}}).key == "controls"

@@ -8,6 +8,7 @@ import json
 import logging
 import socket
 import time
+import urllib.request
 import wave
 
 import numpy as np
@@ -21,6 +22,7 @@ from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
     CameraSettings,
+    ControlsSettings,
     NaoqiSettings,
     NaoqiSimConfig,
     PerceptionSettings,
@@ -31,6 +33,7 @@ from naoqi_sim.config import (
 )
 from naoqi_sim.errors import (
     BootError,
+    CameraNotFedError,
     DeviceUnavailableError,
     ImagesMissingError,
     MissingExtraError,
@@ -477,10 +480,12 @@ def test_start_and_stop_log_each_step_as_it_comes(env, caplog):
         "NAOqi 2.1 (sim): starting naoqi-viewer (headless)",
         "NAOqi 2.1 (sim): starting the video input (top from render)",
         "NAOqi 2.1 (sim): starting the audio input (fake source)",
+        "NAOqi 2.1 (sim): starting the touch input",
     ]
     # Newest first, so the containers' `down` is seen coming.
     assert said(caplog.records[started:]) == [
         "NAOqi 2.1 (sim): stopping",
+        "NAOqi 2.1 (sim): stopping the touch input",
         "NAOqi 2.1 (sim): stopping the audio input",
         "NAOqi 2.1 (sim): stopping the video input",
         "NAOqi 2.1 (sim): stopping the viewer",
@@ -703,3 +708,61 @@ def test_props_need_a_viewer(env):
             naoqisim.props  # noqa: B018
     finally:
         asyncio.run(naoqisim.stop())
+
+
+def test_the_touch_input_runs_with_the_robot_and_releases_at_stop(env):
+    naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())
+    with pytest.raises(NotRunningError):
+        naoqisim.touch  # noqa: B018
+    assert naoqisim.controls_url is None  # the controls are off by default
+
+    async def scenario() -> None:
+        async with naoqisim:
+            await naoqisim.touch.press("Head/Touch/Front")
+            assert naoqisim.touch.pressed() == ["Head/Touch/Front"]
+            with pytest.raises(CameraNotFedError):  # no camera gets frames
+                await naoqisim.cover_camera("top")
+
+    asyncio.run(scenario())
+    key = "Device/SubDeviceList/Head/Touch/Front/Sensor/Value"
+    writes = [e for e in env.viewer.events if e.startswith(key)]
+    assert writes == [f"{key} = 1.0", f"{key} = 0.0"]  # released at stop
+
+
+def test_the_controls_serve_while_running_and_cover_a_fed_camera(env):
+    port = free_port()
+    config = NaoqiSimConfig(
+        viewer=HEADLESS,
+        video_input=VideoInputSettings(top=CameraSettings(source="render")),
+        controls=ControlsSettings(enabled=True, port=port),
+    )
+    naoqisim = sim.NaoqiSim(config, sink=MemorySink())
+
+    async def scenario() -> None:
+        async with naoqisim:
+            assert naoqisim.controls_url == f"http://127.0.0.1:{port}/"
+            assert listening(port)
+            await naoqisim.cover_camera("top")
+            url = f"{naoqisim.controls_url}api/state"
+            answer = await asyncio.to_thread(lambda: urllib.request.urlopen(url).read())
+            state = json.loads(answer)
+            assert state["cameras"]["top"] == {"covered": True, "fed": True}
+            await naoqisim.uncover_camera("top")
+            with pytest.raises(CameraNotFedError):
+                await naoqisim.cover_camera("bottom")
+
+    asyncio.run(scenario())
+    assert not listening(port)
+
+
+def test_a_taken_controls_port_fails_before_anything_starts(env):
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        taken.listen()
+        port = taken.getsockname()[1]
+        config = NaoqiSimConfig(
+            viewer=HEADLESS, controls=ControlsSettings(enabled=True, port=port)
+        )
+        with pytest.raises(PortInUseError):
+            asyncio.run(sim.NaoqiSim(config, sink=MemorySink()).start())
+    assert compose_calls(env) == []

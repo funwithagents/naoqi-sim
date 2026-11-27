@@ -41,6 +41,7 @@ from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
     CameraSettings,
+    ControlsSettings,
     NaoqiSettings,
     NaoqiSimConfig,
     VideoInputSettings,
@@ -76,8 +77,8 @@ def pytest_configure(config):
 
 def live_config(version: str, **blocks) -> NaoqiSimConfig:
     """Headless and silent, with the render camera on naoqi-viewer's empty scene (the tests spawn
-    what the cameras look at, as props) and the fake audio source: what the live tier runs,
-    unless a test asks for something else."""
+    what the cameras look at, as props), the fake audio source and the controls: what the live
+    tier runs, unless a test asks for something else."""
     settings = {
         "naoqi": NaoqiSettings(version=version),  # type: ignore[arg-type]
         "audio_output": AudioOutputSettings(mode="silent"),
@@ -89,6 +90,7 @@ def live_config(version: str, **blocks) -> NaoqiSimConfig:
             bottom=CameraSettings(source="render", fps=5),
         ),
         "audio_input": AudioInputSettings(source="fake"),
+        "controls": ControlsSettings(enabled=True),
         **blocks,
     }
     return NaoqiSimConfig(**settings)

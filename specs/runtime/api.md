@@ -7,6 +7,8 @@ code:
   - src/naoqi_sim/docker_images.py
   - src/naoqi_sim/files.py
   - src/naoqi_sim/audio_output.py
+  - src/naoqi_sim/touch_input.py
+  - src/naoqi_sim/controls.py
   - docker/compose.yaml
   - tests-e2e/conftest.py
   - tests-e2e/support.py
@@ -57,12 +59,13 @@ The API is **async**: `await sim.start()`, `await sim.stop()`, `async with Naoqi
    - every configured source is built (see [config.md](config.md), "Sources not built yet");
    - the audio input's source can run ([audio-input.md](../host/audio-input.md), "Sources"): for `mic`, `sounddevice` imports and a default input device exists (`DeviceUnavailableError`);
    - each webcam a camera's source names can run ([video-input.md](../host/video-input.md), "The webcam source"): the `webcam` extra is installed (`MissingExtraError` naming it), and the `device` opens and gives a frame (`DeviceUnavailableError` naming the device, with the macOS camera permission hint);
-   - ports 9559, 9562 and, when the audio input has a source, the host link's 9563 are free (another naoqi-sim, a hand-started stack or audio output).
+   - ports 9559, 9562, when the audio input has a source the host link's 9563, and when the controls are on their `controls.port` (9564 by default) are free (another naoqi-sim, a hand-started stack or audio output).
 2. **Audio output and host link**: start the audio output ([audio-output.md](../host/audio-output.md)) in-process, feeding the sink, and, when the audio input has a source, open the host link ([devices.md](../host/devices.md), "The host link") so the containers find it when they boot.
 3. **Containers**: `docker compose up -d` (no build) for the `tts` service, the `perception` service when `perception.enabled` ([config.md](config.md), "The perception engine"), the `asr` service when `speech_recognition.enabled` ("The speech recognition engine") and the version's NAOqi service, with the environment generated from the config (`NAOQI_SIM_LANGUAGES` = `robot.available_languages`, comma-separated, `robot.language` first, the version's profile, `2.1` or `2.8`; `NAOQI_SIM_PERCEPTION_URL` and `NAOQI_SIM_ASR_URL` empty when their engine is off, so the modules call none). The compose project is always `naoqi-sim`.
 4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](../container/status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`, then until the `tts` container is (every installed language's voice loaded, a language's first use downloading its voice: [tts-engine.md](../container/tts-engine.md), "Languages"), with a fresh `ready_timeout_s`, then until the `perception` container is when it runs (its model loaded, under a second: [perception-engine.md](../container/perception-engine.md)), then until the `asr` container is when it runs (every installed language's model loaded, about a second each, a language's first use downloading its model: [asr-engine.md](../container/asr-engine.md), "Models"), with a fresh `ready_timeout_s`; the containers boot in parallel, so the engines are usually ready first. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error (for the engine, the voice it could not load). Verified images can still fail here (a volume, the host, a download), so this wait happens on every start.
 5. **Simulated world**: when the config calls for it ([viewer.md](../host/viewer.md), "Which viewer runs"), build a `NaoqiViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; naoqi-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
-6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer; a webcam's capture starts just before the video input and stops just after it. Each writes its `NaoqiSim/*/Source` key. The audio input serves the host link from then on; a fake source also listens to the audio output, so the robot hears its own voice ([audio-input.md](../host/audio-input.md), "The robot hears itself").
+6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer; a webcam's capture starts just before the video input and stops just after it. Each writes its `NaoqiSim/*/Source` key. The audio input serves the host link from then on; a fake source also listens to the audio output, so the robot hears its own voice ([audio-input.md](../host/audio-input.md), "The robot hears itself"). Then the touch input, always ([touch-input.md](../host/touch-input.md), "The device").
+7. **Controls**: when `controls.enabled`, the controls' server on `127.0.0.1:<port>`, over the touch input and the video input ([controls.md](../host/controls.md)); its address is logged, and opened in the default browser when `controls.open`.
 
 **The window closed by the user** stops the viewer only: the robot keeps running, as a NAO does when nobody watches it, so an application or a test that owns the `NaoqiSim` never loses its robot to a click. A `NaoqiSim` notices it from a thread waiting on the viewer (`NaoqiViewer.wait()`) and logs it once, at warning level, saying the robot is still running; it does not reopen the window. What the render camera does then is the video input's business ([video-input.md](../host/video-input.md)).
 
@@ -70,7 +73,7 @@ If any step fails, everything already started is stopped, in reverse order, and 
 
 **A cancelled `start()`** (Ctrl-C in `naoqi-sim run`) stops what it started too, and only then raises `CancelledError`. A step runs on a thread, which a cancel can't interrupt, so the step in flight runs to its end first (`asyncio.shield`): otherwise the teardown's `compose down` would race a `compose up` still running, and the containers would come up after it. The readiness wait is the exception: an abort event makes it give up at its next poll (1 s), rather than wait out `ready_timeout_s`. The fast tier pins it with a fake `docker` whose `up` takes its time.
 
-**`await stop()`** stops the host devices, the simulated world, the containers (`docker compose down`, keeping the package store volumes), the host link and the audio output, in that order. It carries on through every step even if one fails, then raises the first failure. It is a no-op when not running, and `start()` may follow it.
+**`await stop()`** stops the controls (releasing what they hold), the host devices (the touch input releasing every sensor first), the simulated world, the containers (`docker compose down`, keeping the package store volumes), the host link and the audio output, in that order. It carries on through every step even if one fails, then raises the first failure. It is a no-op when not running, and `start()` may follow it.
 
 **`async with NaoqiSim(...) as sim:`** runs `start()` then `stop()` on every way out.
 
@@ -117,6 +120,10 @@ So `start()` only checks: an image missing or not verified (the four of them, wh
 | `await status()` | `NaoqiSimStatus` | Read from the `NaoqiSim` service over qi, in one connect attempt (libqi 3.1.8 fixed the failed connects 3.1.6 needed retries for): `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source`, `perception_source` and `speech_recognition_source` (`engine` or `none`, [status-service.md](../container/status-service.md)) |
 | `fake_audio` | `FakeAudioSource` | The fake audio source a test plays sounds through ([audio-input.md](../host/audio-input.md), "The fake source"); `NotRunningError` when not running, `NaoqiSimError` when `audio_input.source` is not `fake` |
 | `props` | `SimProps`, over naoqi-viewer's `PropsClient` | The props of the simulated world a test spawns, places and despawns, in the scene's frame or the robot's ([props.md](../host/props.md)); `NotRunningError` when not running, `NaoqiSimError` when the config runs no viewer |
+| `touch` | `Touch` | The touch sensors ([touch-input.md](../host/touch-input.md), "The API"): `await touch.press(*sensors)`, `release(*sensors)`, `tap(*sensors, duration_s=0.2)`, `touch.pressed()`; `NotRunningError` when not running |
+| `await cover_camera(camera)`, `await uncover_camera(camera)` | `None` | A hand over the `top` or `bottom` camera, or taken away ([controls.md](../host/controls.md), "The camera cover"); `CameraNotFedError` for a camera the video input does not feed |
+| `await stop_activity_gesture()` | `None` | The version's gesture that stops the focused activity ([touch-input.md](../host/touch-input.md), "What a touch does, per version"), returning once done; on 2.8 `CameraNotFedError` when the top camera has no source |
+| `controls_url` | `str` or `None` | The controls page's address, `http://127.0.0.1:<port>/`; `None` when the `controls` block is off |
 | `config` | `NaoqiSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |
 
@@ -138,6 +145,7 @@ Both check Docker first (`DockerUnavailableError`).
 | --- | --- |
 | `NaoqiSimError(RuntimeError)` | The base of naoqi-sim's own errors; raised as such for lifecycle misuse (a double `start()`) |
 | `NotRunningError(NaoqiSimError)` | `url` or `status()` when not running |
+| `CameraNotFedError(NaoqiSimError)` | A camera covered or uncovered while the video input does not feed it |
 | `DockerUnavailableError`, `ImagesMissingError`, `ImagesOutdatedError`, `MissingExtraError`, `DeviceNotBuiltError`, `DeviceUnavailableError`, `PortInUseError` (each a `NaoqiSimError`) | Step 1 of `start()`, each naming what to do (start Docker, run `naoqi-sim fetch-and-build-images`, `naoqi-sim[viewer]` or `naoqi-sim[webcam]`, which device is missing, which host device or library is unavailable (no PortAudio, no default input device, a webcam that does not open), which port is taken) |
 | `BootError(NaoqiSimError)` | The NAOqi container, or then the `tts` one, exited, turned `unhealthy` or was not `healthy` within `ready_timeout_s` (at start or at verification); carries the end of its log |
 | `FetchError(NaoqiSimError)`, `ImageBuildError(NaoqiSimError)` | `fetch_and_build_images`: a download or hash failure (naming the file), a failed `docker build` (with the end of its output) |
@@ -154,7 +162,7 @@ The `NaoqiSim` *class* (`naoqi_sim.NaoqiSim`, on the host) keeps the name of the
 
 ### One naoqi-sim per machine
 
-Ports 9559, 9562 and 9563 are fixed, the compose project name is fixed and the containers have fixed names, so one `NaoqiSim` runs per machine. A second `start()` (in another process or the same one) fails at step 1 with `PortInUseError`. Several instances are a later option (ports in the config; see [config.md](config.md), open questions).
+Ports 9559, 9562 and 9563 are fixed (the controls' port is the config's), the compose project name is fixed and the containers have fixed names, so one `NaoqiSim` runs per machine. A second `start()` (in another process or the same one) fails at step 1 with `PortInUseError`. Several instances are a later option (ports in the config; see [config.md](config.md), open questions).
 
 ## Open questions
 

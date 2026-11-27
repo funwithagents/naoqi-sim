@@ -1,8 +1,8 @@
 """`NaoqiSim`: the one object that runs a simulated NAO on the host (specs/runtime/api.md).
 
 Built from a `NaoqiSimConfig`, its `start()` checks the machine, starts the audio output and the host
-link, the containers, the simulated world, the video input and the audio input, and returns once
-the robot is ready; `stop()` takes them all down. Every step that starts something registers how to undo it, so a failed start, a
+link, the containers, the simulated world, the video, audio and touch inputs and the controls, and
+returns once the robot is ready; `stop()` takes them all down. Every step that starts something registers how to undo it, so a failed start, a
 cancelled one and `stop()` share one teardown, run in reverse.
 """
 
@@ -10,6 +10,7 @@ import asyncio
 import logging
 import sys
 import threading
+import webbrowser
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Self
@@ -25,7 +26,8 @@ from naoqi_sim.audio_output import (
     WavSink,
 )
 from naoqi_sim.config import NaoqiSettings, NaoqiSimConfig, NaoqiVersion
-from naoqi_sim.errors import NaoqiSimError, NotRunningError
+from naoqi_sim.controls import Controls, stop_activity_gesture
+from naoqi_sim.errors import CameraNotFedError, NaoqiSimError, NotRunningError
 from naoqi_sim.host_link import HostLink
 from naoqi_sim.stack import (
     AUDIO_OUTPUT_PORT,
@@ -34,6 +36,7 @@ from naoqi_sim.stack import (
     URL,
     NaoqiSimStatus,
 )
+from naoqi_sim.touch_input import Touch, TouchInput
 from naoqi_sim.video_input import FrameSource, RenderSource, VideoInput
 from naoqi_sim.viewer import SimProps, SimWorld, needs_viewer, viewer_config
 from naoqi_sim.webcam import Webcam, check_webcam
@@ -70,6 +73,9 @@ class NaoqiSim:
         self._link: HostLink | None = None
         self._audio_input: AudioInput | None = None
         self._world: SimWorld | None = None
+        self._video_input: VideoInput | None = None
+        self._touch: TouchInput | None = None
+        self._controls: Controls | None = None
         self._undo: list[tuple[str, Callable[[], None]]] = []
         self._running = False
         self._busy = asyncio.Lock()
@@ -128,6 +134,54 @@ class NaoqiSim:
             )
         return self._world.props
 
+    @property
+    def touch(self) -> Touch:
+        """The robot's touch sensors (specs/host/touch-input.md): `await sim.touch.tap("Head")`."""
+        self.url  # noqa: B018  (raises NotRunningError)
+        assert self._touch is not None  # started with the robot
+        return Touch(self._touch)
+
+    @property
+    def controls_url(self) -> str | None:
+        """The controls page's address (specs/host/controls.md); None when the `controls` block
+        is off."""
+        if not self._config.controls.enabled:
+            return None
+        self.url  # noqa: B018  (raises NotRunningError)
+        assert self._controls is not None
+        return self._controls.url
+
+    async def cover_camera(self, camera: str) -> None:
+        """Put a hand over a head camera (`top` or `bottom`): it sees dark until uncovered
+        (specs/host/controls.md, "The camera cover")."""
+        await asyncio.to_thread(self._video("cover").cover, camera, True)
+
+    async def uncover_camera(self, camera: str) -> None:
+        await asyncio.to_thread(self._video("uncover").cover, camera, False)
+
+    def _video(self, what: str) -> VideoInput:
+        self.url  # noqa: B018  (raises NotRunningError)
+        if self._video_input is None:
+            raise CameraNotFedError(
+                f"no camera gets frames (video_input's sources are none), so none to {what}"
+            )
+        return self._video_input
+
+    async def stop_activity_gesture(self) -> None:
+        """The gesture a person stops the focused activity with on this version
+        (specs/host/touch-input.md, "What a touch does, per version"): on 2.1 the three head
+        sensors held 3.5 s; on 2.8 the top camera covered and the front sensor held 2 s. Returns
+        once the gesture is done; Life stops the activity a few seconds later."""
+        self.url  # noqa: B018  (raises NotRunningError)
+        assert self._touch is not None
+        await asyncio.to_thread(
+            stop_activity_gesture,
+            self._config.naoqi.version,
+            self._touch,
+            self._video_input,
+            Touch.HOLDER,
+        )
+
     async def status(self) -> NaoqiSimStatus:
         """What the `NaoqiSim` service reports, read over qi."""
         self.url  # noqa: B018  (raises NotRunningError)
@@ -155,6 +209,9 @@ class NaoqiSim:
                     await self._step(abort, self._start_video_input, world)
                 if self._config.audio_input.source != "none":
                     await self._step(abort, self._start_audio_input)
+                await self._step(abort, self._start_touch_input)
+                if self._config.controls.enabled:
+                    await self._step(abort, self._start_controls)
             except BaseException:
                 await asyncio.to_thread(self._teardown, False)
                 raise
@@ -210,6 +267,8 @@ class NaoqiSim:
         docker_images.require_free(AUDIO_OUTPUT_PORT)
         if config.audio_input.source != "none":
             docker_images.require_free(HOST_LINK_PORT)
+        if config.controls.enabled:
+            docker_images.require_free(config.controls.port)
         return world_config
 
     def _webcams(self) -> dict[int, list[str]]:
@@ -324,8 +383,14 @@ class NaoqiSim:
             sources[camera] = webcams[index]
         device = VideoInput(sources, self._config.video_input.rates)
         # Registered after the viewer's, so the teardown stops it first.
-        self._undo.append(("video input", device.stop))
+        self._undo.append(("video input", self._stop_video_input))
+        self._video_input = device
         device.start()
+
+    def _stop_video_input(self) -> None:
+        device, self._video_input = self._video_input, None
+        if device is not None:
+            device.stop()
 
     def _start_audio_input(self) -> None:
         settings = self._config.audio_input
@@ -351,6 +416,38 @@ class NaoqiSim:
         device, self._audio_input = self._audio_input, None
         if device is not None:
             device.stop()
+
+    def _start_touch_input(self) -> None:
+        """Always on: it captures nothing of the user (specs/host/touch-input.md, "The device")."""
+        log.info("%s: starting the touch input", self._label)
+        device = TouchInput()
+        self._undo.append(("touch input", self._stop_touch_input))
+        self._touch = device
+        device.start()
+
+    def _stop_touch_input(self) -> None:
+        device, self._touch = self._touch, None
+        if device is not None:
+            device.stop()  # releases every sensor first
+
+    def _start_controls(self) -> None:
+        settings = self._config.controls
+        assert self._touch is not None
+        controls = Controls(
+            settings.port, self._config.naoqi.version, self._touch, self._video_input
+        )
+        # Registered last, so the teardown stops it first and its holds are released.
+        self._undo.append(("controls", self._stop_controls))
+        self._controls = controls
+        controls.start()
+        log.info("%s: the controls are at %s", self._label, controls.url)
+        if settings.open:
+            webbrowser.open(controls.url)
+
+    def _stop_controls(self) -> None:
+        controls, self._controls = self._controls, None
+        if controls is not None:
+            controls.stop()
 
     def _teardown(self, raise_first: bool) -> None:
         """Undo every started step, newest first, through failures."""
