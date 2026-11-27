@@ -23,7 +23,7 @@ tests:
 
 **Status:** Stable
 
-Decisions of Nov 25, 2026, on the surveys of Nov 20 and 21 (trail in `spike/RESULTS.md`, from "Life and the dialog on 2.8" on; a real NAO 2.1 measured Nov 21). The boot state and the whole chain were measured on both sims on Nov 25, 2026; the open questions are deferrals. Built so far (Nov 25, 2026): the boot state on both versions, 2.1's `setState`, and a NAO's Life configuration on 2.8; the rest has no plan yet.
+Decisions of Nov 25, 2026, on the surveys of Nov 20 and 21 (a real NAO 2.1 measured Nov 21). The boot state and the whole chain were measured on both sims on Nov 25, 2026; the open questions are deferrals. Built so far (Nov 25, 2026): the boot state on both versions, 2.1's `setState`, and a NAO's Life configuration on 2.8; the rest has no plan yet.
 
 ## Purpose
 

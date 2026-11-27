@@ -11,7 +11,7 @@ Implements:
 
 Left out: the open questions of those specs (the system volume, the tick length measured on a robot, loaded-file ids, web streams).
 
-The design was measured before writing this plan (Oct 12, 2026, `spike/RESULTS.md`, "ALAudioPlayer: formats, task ids, wait and stop"; scripts `spike/player_taskid.py`, `spike/player_stop.py`, `spike/player_cpp/`). A C++ `ALModule` built in each image's native stage sees `stop(id)` through `isStopRequired(getMethodID())` on both versions; Python modules cannot.
+The design was measured before writing this plan (Oct 12, 2026). A C++ `ALModule` built in each image's native stage sees `stop(id)` through `isStopRequired(getMethodID())` on both versions; Python modules cannot.
 
 ## Scope
 

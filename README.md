@@ -4,7 +4,7 @@ A NAO in a box: NAOqi 2.1.4.13 (`naoqi-bin` from the Choregraphe suite) running 
 Docker image with our Python 2.7 override modules loaded into its process. Unofficial, Apache-2.0;
 the image is built locally from the user's suite and is never published.
 
-Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4, see [spike/RESULTS.md](spike/RESULTS.md).
+Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4; its findings are folded into the specs.
 
 ## Layout
 

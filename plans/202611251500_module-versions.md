@@ -4,7 +4,7 @@
 
 Implements `specs/container/service-replacement.md` ("Object model per version", `version()`): every module of ours answers `version()` as NAOqi's built-ins do. It leaves `ALSpeechRecognition._getVersion` as it is (the recognition engine's version, its own answer).
 
-Measured first, on Nov 25, 2026 (`spike/versions/`): on 2.1 the built-ins and our C++ modules answer `'2.1.4'`, as a NAO does, and our ten Python `ALModule`s answered `'PythonModule'`; on 2.8 the built-ins and our C++ modules answer `'2.8'`, and our qi services had no `version()`. On 2.1 a Python `version` method replaces the generic's answer without a binding by hand.
+Measured first, on Nov 25, 2026: on 2.1 the built-ins and our C++ modules answer `'2.1.4'`, as a NAO does, and our ten Python `ALModule`s answered `'PythonModule'`; on 2.8 the built-ins and our C++ modules answer `'2.8'`, and our qi services had no `version()`. On 2.1 a Python `version` method replaces the generic's answer without a binding by hand.
 
 ## Scope
 

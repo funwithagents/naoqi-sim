@@ -16,7 +16,7 @@ tests:
 
 **Status:** Implemented
 
-Design settled Oct 29, 2026 (the survey in `spike/RESULTS.md`, "Face detection and people perception survey"); built by [plans/202610291800_face-detection-and-people-perception.md](../../plans/202610291800_face-detection-and-people-perception.md).
+Design settled Oct 29, 2026, after a survey of both images; built by [plans/202610291800_face-detection-and-people-perception.md](../../plans/202610291800_face-detection-and-people-perception.md).
 
 ## Purpose
 
@@ -58,7 +58,7 @@ The face-recognition user database behind `ALUserSession`: when awareness tracks
 
 ### Mechanism
 
-- **One generic stub per object model**, table-driven: `naoqi_sim_perception_stubs_core.py` holds the tables (per service: methods with arity and defaults, events, keys, settings, signals) and the `Extractor` bookkeeping; the 2.1 shell builds one `ALModule` class per stub from its table (methods generated with real argument lists, since an `ALModule` binds by argspec; the one-argument overloads bound with `BIND_PYTHON`), the 2.8 shell one qi service class per stub (overloads as one varargs method, the signals and properties declared on the instance). The survey's modules in `spike/perception_survey/` are the prototype.
+- **One generic stub per object model**, table-driven: `naoqi_sim_perception_stubs_core.py` holds the tables (per service: methods with arity and defaults, events, keys, settings, signals) and the `Extractor` bookkeeping; the 2.1 shell builds one `ALModule` class per stub from its table (methods generated with real argument lists, since an `ALModule` binds by argspec; the one-argument overloads bound with `BIND_PYTHON`), the 2.8 shell one qi service class per stub (overloads as one varargs method, the signals and properties declared on the instance).
 - **Loaded** by the loader after the people module; the entrypoints leave the libraries out (`LEFT_OUT`: `sittingpeopledetection engagementzones gazeanalysis wavingdetection` on both versions) and check every stubbed name answers (`ADDED`) ([container.md](../container/container.md), "Entrypoint").
 - **Listed**: `NaoqiSim/Perception/Stubs` holds the stubbed names ([status-service.md](../container/status-service.md)), so a client or a test tells a stub from a module that detects.
 - Every call is logged as a JSON line (`/home/nao/perception_stubs.jsonl`): the stubs are also how the next caller's needs are learnt, as the survey learnt these.

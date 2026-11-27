@@ -132,7 +132,7 @@ class Population(ext.Extractor):
 
     def subscriptions_changed(self):
         # The last subscriber gone, a NAO clears its population at once and raises PopulationReset
-        # (bobby, Oct 29, 2026, twice, even with nobody in it; no JustLeft).
+        # (a real NAO 2.1, Oct 29, 2026, twice, even with nobody in it; no JustLeft).
         had = getattr(self, "_had_subscribers", False)
         self._had_subscribers = bool(self.subscribers)
         if had and not self.subscribers:
@@ -148,7 +148,7 @@ class Population(ext.Extractor):
             for face in faces:
                 head = head_in_camera_frame(face.alpha, face.beta, face.size_y)
                 robot = transform_point(detection.transforms[FRAME_ROBOT], head)
-                # from the camera, as a NAO measures it (bobby, Oct 29, 2026: Distance is the
+                # from the camera, as a NAO measures it (a NAO 2.1, Oct 29, 2026: Distance is the
                 # camera-to-head distance; AnglesYawPitch the head's angles from the camera's axis)
                 distance = math.sqrt(head[0] ** 2 + head[1] ** 2 + head[2] ** 2)
                 if distance > self.get("MaximumDetectionRange"):
