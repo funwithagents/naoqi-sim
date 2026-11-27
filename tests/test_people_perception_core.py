@@ -171,7 +171,8 @@ def test_a_face_keeps_its_person_while_it_moves_a_little_and_two_faces_are_two_p
     )  # 0.1 m and 0.05 m away: the same people
     assert rig.memory.data["PeoplePerception/PeopleList"] == [1, 2]
     assert rig.memory.person(1, "AnglesYawPitch")[0] == pytest.approx(0.1)
-    rig.see([face(alpha=-0.4)])  # 0.4 m from either: a third person
+    # a third face in the same detection: a third person, however close
+    rig.see([face(alpha=0.1), face(alpha=0.55, track_id=1), face(alpha=-0.4)])
     assert rig.memory.data["PeoplePerception/PeopleList"] == [1, 2, 3]
     # the head turns 0.3 rad: the face's angles change, the person's position in the world does not
     turned = detection([face(alpha=-0.7)], rig.t + 0.2)
@@ -214,6 +215,24 @@ def test_a_face_keeps_its_person_while_it_moves_a_little_and_two_faces_are_two_p
         2,
         3,
     ]
+
+
+def test_a_person_walking_in_keeps_their_id_however_few_the_detections():
+    rig = Rig()
+    rig.see([face(distance=2.0)])
+    # one detection a second, as on a slow machine: 1 m closer is the same person walking in
+    rig.see([face(distance=1.0)], dt=1.0)
+    m = rig.memory
+    assert m.data["PeoplePerception/PeopleList"] == [1]
+    assert m.person(1, "Distance") == pytest.approx(1.0)
+    assert [v for _, v in m.events("PeoplePerception/JustArrived")] == [1]
+    # 0.2 s later, a face 1 m away from them is someone else: nobody walks that fast
+    rig.see([face(distance=1.0), face(alpha=0.8, distance=1.0, track_id=1)], dt=0.2)
+    assert m.data["PeoplePerception/PeopleList"] == [1, 2]
+    # however long unseen, the walk counted is at most 1 s: 2 m away, 1.8 s later, a new person
+    rig.see([face(distance=1.0)], dt=0.2)
+    rig.see([face(distance=3.0)], dt=1.8)  # within the 3.5 m range
+    assert m.data["PeoplePerception/PeopleList"] == [1, 2, 3]
 
 
 def test_a_person_turns_invisible_then_leaves_after_the_two_delays():
