@@ -23,6 +23,8 @@ LAST="ALPanoramaCompass ALAnimatedSpeech ALDialog ALAutonomousLife"
 # The tracking libraries stay: the people-perception sources they read, loaded right after
 # ALModularity registers (specs/services/perception-stubs.md, "The tracking processes").
 KEPT="_ALFastPersonTracking _ALFindPersonHead"
+# Before NAOqi starts, so the robot packages it starts at boot find NAOqi on 127.0.0.1:9559.
+loopback_to_naoqi 9558
 write_autoload "$LEFT_OUT" "pythonbridge:$OURS" "modularityperception:naoqi_sim_perception_sources"
 export NAOQI_SIM_MODULARITY_PROGRAMS="$NAOQI_HOME/share/naoqi/vision/mds/peopleperception_sources.mds"
 export NAOQI_SIM_PYTHON_MODULES="$MODULES" NAOQI_SIM_MODULES_DIR="$NAOQI_HOME/modules"

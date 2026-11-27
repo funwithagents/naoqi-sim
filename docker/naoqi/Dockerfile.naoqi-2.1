@@ -34,7 +34,7 @@ FROM suite AS native
 ARG SDK=naoqi-sdk-2.1.4.13-linux64.tar.gz
 
 RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++ \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++ python-yaml \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=image-data ${SDK} /tmp/sdk.tar.gz
 RUN mkdir -p /tmp/sdk && tar -xzf /tmp/sdk.tar.gz -C /tmp/sdk --strip-components=1 --wildcards '*/include' \
@@ -63,6 +63,10 @@ COPY services/*/*.py /opt/naoqi/modules/
 # Our C++ modules, beside the suite's: an autoload entry `foo` loads lib/naoqi/libfoo.so
 # (specs/container/service-replacement.md, "Replacing a built-in").
 COPY --from=native /tmp/native/*.so /opt/naoqi/lib/naoqi/
+# PyYAML for robot packages (signs-and-feedback reads its configuration with it): the pure Python
+# `yaml` folder of this base's python-yaml, into the suite interpreter's site-packages
+# (specs/container/container.md, "Robot software in the image").
+COPY --from=native /usr/lib/python2.7/dist-packages/yaml /opt/naoqi/lib/python2.7/site-packages/yaml
 # This version's boot procedure, and what it shares with the other one.
 COPY entrypoint-2.1.sh /opt/naoqi/bin/naoqi-sim-entrypoint.sh
 COPY entrypoint-lib.sh /opt/naoqi/bin/entrypoint-lib.sh
@@ -71,6 +75,14 @@ COPY healthcheck.sh /opt/naoqi/bin/naoqi-sim-healthcheck.sh
 # The robot's animations package (extracted from the robot image). PackageManager installs every
 # .pkg in share/naoqi/apps/ as a system package at boot, as a robot does with its factory packages.
 COPY --from=image-data animations.pkg /opt/naoqi/share/naoqi/apps/animations.pkg
+
+# Robot software in the image (specs/container/container.md): the robot's /usr/bin/python2 and python,
+# the suite's own interpreter (2.7.8, which its qi bindings are built for), its libraries known to the
+# linker after the system's, so it also starts with an empty environment, and the bindings (in
+# /opt/naoqi/lib on 2.1) on its path.
+RUN ln -s /opt/naoqi/bin/python2.orig /usr/bin/python2 && ln -s python2 /usr/bin/python \
+ && echo /opt/naoqi/lib > /etc/ld.so.conf.d/zz-naoqi.conf && ldconfig \
+ && echo /opt/naoqi/lib > /opt/naoqi/lib/python2.7/site-packages/naoqi.pth
 
 # naoqi-bin refuses to run as root. The package store is created here so that the compose volume
 # mounted on it starts owned by nao.

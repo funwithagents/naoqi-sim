@@ -21,6 +21,7 @@ from naoqi_sim.suite import (
     VERSIONS,
     PackagedFile,
     PinnedFile,
+    RobotPackage,
     Version,
     fetch,
     opn_payload,
@@ -353,6 +354,69 @@ def test_rejects_a_life_package_without_the_configuration(origin, tmp_path):
     assert not (tmp_path / "2.1" / LIFE_CONFIG).exists()
 
 
+GESTURES_PKG = zipped({"manifest.xml": b"<package uuid='altactilegesture'/>"})
+FEEDBACK_PKG = zipped({"manifest.xml": b"<package uuid='signs-and-feedback'/>"})
+
+
+def with_packages(origin: Origin, feedback: bytes = FEEDBACK_PKG) -> Version:
+    return replace(
+        version(origin),
+        packages=(
+            RobotPackage("/apps/gestures-1.0.pkg", sha(GESTURES_PKG), "gestures.pkg"),
+            RobotPackage("/apps/feedback-0.3-.pkg", sha(feedback), "feedback.pkg"),
+        ),
+    )
+
+
+def robot_packages() -> PathCat:
+    return PathCat(
+        {
+            "/usr/share/naoqi/apps/animations.pkg": PKG,
+            "/apps/gestures-1.0.pkg": GESTURES_PKG,
+            "/apps/feedback-0.3-.pkg": FEEDBACK_PKG,
+        }
+    )
+
+
+def test_takes_the_robots_other_packages_whole_under_plain_names(origin, tmp_path):
+    cat = robot_packages()
+    folder = fetch(with_packages(origin), tmp_path, cat)
+    assert (folder / "gestures.pkg").read_bytes() == GESTURES_PKG
+    assert (folder / "feedback.pkg").read_bytes() == FEEDBACK_PKG
+    assert sorted(p.name for p in folder.iterdir()) == [
+        PACKAGE,
+        "feedback.pkg",
+        "gestures.pkg",
+        "suite.tar.gz",
+    ]
+    assert origin.requests.count("/nao%20image.opn") == 1  # one download for every file
+    fetch(with_packages(origin), tmp_path, cat)
+    assert len(origin.requests) == 2 and len(cat.read) == 3  # kept, nothing read again
+
+
+def test_a_folder_filled_before_the_packages_existed_gets_them(origin, tmp_path):
+    fetch(
+        version(origin), tmp_path, robot_packages()
+    )  # what an earlier naoqi-sim pinned
+    cat = robot_packages()
+    fetch(with_packages(origin), tmp_path, cat)
+    # The robot image is downloaded again, and only the packages are read out of it.
+    assert origin.requests.count("/nao%20image.opn") == 2
+    assert cat.read == ["/apps/gestures-1.0.pkg", "/apps/feedback-0.3-.pkg"]
+    assert not (tmp_path / "2.1" / "nao image.opn").exists()
+
+
+def test_rejects_a_robot_package_with_the_wrong_hash(origin, tmp_path):
+    with pytest.raises(FetchError, match="feedback-0.3-.pkg.*SHA-256"):
+        fetch(
+            with_packages(origin, feedback=b"another release"),
+            tmp_path,
+            robot_packages(),
+        )
+    assert not (tmp_path / "2.1" / "feedback.pkg").exists()
+    assert (tmp_path / "2.1" / "gestures.pkg").read_bytes() == GESTURES_PKG
+
+
 def test_rejects_a_download_with_the_wrong_hash(origin, tmp_path):
     with pytest.raises(FetchError, match="SHA-256"):
         fetch(version(origin, suite_body=b"something else"), tmp_path, echo_cat)
@@ -386,6 +450,16 @@ def test_the_dockerfile_builds_from_the_fetched_files(name):
     # 2.8's Life reads a NAO's configuration where Life looks first (autonomous-life.md).
     life = f"COPY --from=image-data --chown=1000:1000 {LIFE_CONFIG} /home/nao/.config/naoqi/{LIFE_CONFIG}"
     assert (life in dockerfile) == (v.life_config is not None) == (name == "2.8")
+    # 2.8's other robot packages, installed at boot beside animations (container.md).
+    assert bool(v.packages) == (name == "2.8")
+    for p in v.packages:
+        assert p.path.startswith("/opt/aldebaran/share/naoqi/apps/")
+        assert re.fullmatch(r"[0-9a-f]{64}", p.sha256)
+        assert re.search(
+            rf"^COPY --from=image-data .*\b{re.escape(p.name)}\b.* /opt/naoqi/share/naoqi/apps/$",
+            dockerfile,
+            re.MULTILINE,
+        ), p.name
     compose = (DOCKER / "compose.yaml").read_text()
     assert f"image-data: ${{NAOQI_SIM_IMAGE_DATA:-./image-data}}/{name}\n" in compose
     for f in (v.suite, v.image):

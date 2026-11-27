@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<package uuid="naoqi_sim_test_service" version="1.0.0">
+  <names><name lang="en_US">naoqi-sim test service</name></names>
+  <descriptions><description lang="en_US">For naoqi-sim's live tests only: a service written as robot software is, started by the service manager with /usr/bin/python2, which connects to tcp://127.0.0.1:9559 and registers NaoqiSimTestService.</description></descriptions>
+  <supportedLanguages><language>en_US</language></supportedLanguages>
+  <descriptionLanguages><language>en_US</language></descriptionLanguages>
+  <contents/>
+  <services>
+    <service name="NaoqiSimTestService" autorun="true" execStart="/usr/bin/python2 lib/naoqi_sim_test_service.py"/>
+  </services>
+</package>

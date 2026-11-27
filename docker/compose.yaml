@@ -125,6 +125,9 @@ services:
     image: naoqi-sim/naoqi:2.8.7.4
     platform: linux/amd64
     container_name: naoqi-sim-naoqi28
+    # The entrypoint redirects the container's own connections to 127.0.0.1:9559 to NAOqi, as on a
+    # robot, which takes this capability on the container's own network (container.md, "Network layout").
+    cap_add: [NET_ADMIN]
     environment:
       NAOQI_SIM_TTS_URL: http://tts:8080
       # The perception engine ALFaceDetection posts its frames to; the host sets it empty to run

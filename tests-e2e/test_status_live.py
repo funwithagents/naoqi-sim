@@ -22,6 +22,9 @@ def test_the_target_identifies_as_naoqi_sim(nao):
     # The face detection and people perception modules say whether an engine is behind them
     # (specs/container/status-service.md); the live tier runs it.
     assert memory.getData("NaoqiSim/Perception/Source") == "engine"
+    # Robot software inside the container reaches NAOqi on 127.0.0.1:9559, as on a robot (2.8: through
+    # the entrypoint's redirect, which the host running the live tier allows).
+    assert memory.getData("NaoqiSim/Loopback9559") == "naoqi"
 
 
 def test_ready_means_the_replacements_answer(nao):

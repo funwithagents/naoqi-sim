@@ -1,7 +1,8 @@
 """Fetch what the NAOqi images are built from into the image data folder's <version>/ (`files.IMAGE_DATA`:
 docker/image-data/ in a checkout, the user data directory when installed): the pinned Choregraphe
 suite, the robot's `animations` package extracted from the public robot image (on 2.8 also a NAO's
-Autonomous Life configuration, from the image's `life` package), and the build files
+Autonomous Life configuration, from the image's `life` package, and two of the robot's own services,
+`altactilegesture` and `signs-and-feedback`), and the build files
 whose headers our C++ NAOqi modules are compiled against (the version's own C++ SDK:
 specs/container/container.md, "Build files").
 
@@ -79,6 +80,16 @@ class PackagedFile:
 
 
 @dataclass(frozen=True)
+class RobotPackage:
+    """A package of the robot image taken whole, as `animations.pkg` is: its path in the root
+    filesystem, its hash, and the plain name it is saved and copied into the image under."""
+
+    path: str
+    sha256: str
+    name: str
+
+
+@dataclass(frozen=True)
 class Version:
     name: str
     suite: PinnedFile
@@ -90,6 +101,9 @@ class Version:
     # A NAO's Life configuration, from the robot's `life` package (2.8: the desktop suite's has no
     # rule taking Life to a person; specs/container/autonomous-life.md)
     life_config: PackagedFile | None = None
+    # More of the robot's packages, installed at boot beside `animations` (2.8: its tactile
+    # gestures and its signs and feedback; specs/container/container.md, "Robot packages in the image")
+    packages: tuple[RobotPackage, ...] = ()
 
 
 VERSIONS = {
@@ -138,6 +152,18 @@ VERSIONS = {
             "5502364f8787498c9084205be6141f69c394dd58af7e89f4bbfe7b4b98977859",
             "etc/naoqi/autonomy-nao-romeo.cfg",
             "587dfce272003c01e21c045f6c143b52dcd9e5f56e0df32ed2c171fa2c9a5917",
+        ),
+        (
+            RobotPackage(
+                "/opt/aldebaran/share/naoqi/apps/altactilegesture-1.0.0.pkg",
+                "e3fde7b3f27f5aca090e13036ca79f4a3a5ab2c0c7e84beb220136ef028e3b4a",
+                "altactilegesture.pkg",
+            ),
+            RobotPackage(
+                "/opt/aldebaran/share/naoqi/apps/signs-and-feedback-0.3.11-.pkg",
+                "e6c1bdf3d5363ee073f2251130d278b6d866a6213e05af86aefcf7d526213b48",
+                "signs-and-feedback.pkg",
+            ),
         ),
     ),
 }
@@ -399,7 +425,7 @@ def fetch(
     version: Version, image_data: Path = IMAGE_DATA, cat: Cat = docker_cat
 ) -> Path:
     """Make sure `<image-data>/<version>/` holds the suite, `animations.pkg`, the Life
-    configuration (2.8) and the build files. Returns the folder."""
+    configuration and the robot's other packages (2.8), and the build files. Returns the folder."""
     folder = image_data / version.name
     _log(f"NAOqi {version.name}")
     fetch_file(version.suite, folder)
@@ -409,7 +435,8 @@ def fetch(
     life = version.life_config
     need_package = not _present(package, version.package_sha256)
     need_life = life is not None and not _present(folder / LIFE_CONFIG, life.sha256)
-    if need_package or need_life:
+    missing = [p for p in version.packages if not _present(folder / p.name, p.sha256)]
+    if need_package or need_life or missing:
         opn = folder / version.image.filename
         users = opn.exists()  # a robot image the user put there is kept
         try:
@@ -435,6 +462,14 @@ def fetch(
                     folder / LIFE_CONFIG,
                     life.sha256,
                     f"{source}:{life.member}",
+                )
+            for p in missing:
+                _log(f"extracting {p.path} from {opn.name} (needs Docker)")
+                _write(
+                    cat(rootfs_chunks(opn), p.path),
+                    folder / p.name,
+                    p.sha256,
+                    f"{opn.name}:{p.path}",
                 )
         finally:
             if not users:

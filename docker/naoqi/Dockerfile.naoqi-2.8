@@ -36,7 +36,7 @@ FROM suite AS native
 ARG SDK=naoqi-sdk-2.8.7.4-linux64.tar.gz
 
 RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++ \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++ python-yaml \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=image-data ${SDK} /tmp/sdk.tar.gz
 RUN mkdir -p /tmp/sdk && tar -xzf /tmp/sdk.tar.gz -C /tmp/sdk --strip-components=1 --wildcards '*/include' \
@@ -65,6 +65,10 @@ COPY services/*/*.py /opt/naoqi/modules/
 # Our C++ modules, beside the suite's: an autoload entry `foo` loads lib/naoqi/libfoo.so
 # (specs/container/service-replacement.md, "Replacing a built-in").
 COPY --from=native /tmp/native/*.so /opt/naoqi/lib/naoqi/
+# PyYAML for robot packages (signs-and-feedback reads its configuration with it): the pure Python
+# `yaml` folder of this base's python-yaml, into the suite interpreter's site-packages
+# (specs/container/container.md, "Robot software in the image").
+COPY --from=native /usr/lib/python2.7/dist-packages/yaml /opt/naoqi/lib/python2.7/site-packages/yaml
 # This version's boot procedure, and what it shares with the other one.
 COPY entrypoint-2.8.sh /opt/naoqi/bin/naoqi-sim-entrypoint.sh
 COPY entrypoint-lib.sh /opt/naoqi/bin/entrypoint-lib.sh
@@ -73,9 +77,26 @@ COPY healthcheck.sh /opt/naoqi/bin/naoqi-sim-healthcheck.sh
 # The robot's animations package (extracted from the robot image). PackageManager installs every
 # .pkg in share/naoqi/apps/ as a system package at boot, as a robot does with its factory packages.
 COPY --from=image-data animations.pkg /opt/naoqi/share/naoqi/apps/animations.pkg
+# Two of the robot's own services, from the same robot image: its tactile gestures and its signs and
+# feedback (the listening bips and LEDs, the LED states Life asks for).
+COPY --from=image-data altactilegesture.pkg signs-and-feedback.pkg /opt/naoqi/share/naoqi/apps/
 
 # The desktop 2.8 suite defaults to Pepper's model; make the virtual robot a NAO H25 V6.
 RUN sed -i 's/JULIETTEY20B2C.xml/NAOH25V60.xml/' /opt/naoqi/etc/naoqi/ALRobotModel.xml
+
+# Robot software in the image (specs/container/container.md): the robot's /usr/bin/python2 and python,
+# the suite's own interpreter (2.7.8, which its qi bindings are built for), its libraries known to the
+# linker after the system's, so it also starts with an empty environment; a NAO 6's /data/home; and
+# iptables for the entrypoint's loopback redirect (127.0.0.1:9559 to NAOqi, as on a robot), runnable by
+# nao: a file capability (compose adds NET_ADMIN to the container) and a writable lock.
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends iptables libcap2-bin \
+ && rm -rf /var/lib/apt/lists/* \
+ && setcap cap_net_admin,cap_net_raw+ep "$(readlink -f /sbin/iptables)" \
+ && touch /run/xtables.lock && chmod 666 /run/xtables.lock \
+ && ln -s /opt/naoqi/bin/python2.orig /usr/bin/python2 && ln -s python2 /usr/bin/python \
+ && echo /opt/naoqi/lib > /etc/ld.so.conf.d/zz-naoqi.conf && ldconfig \
+ && mkdir -p /data && ln -s /home /data/home
 
 # naoqi-bin refuses to run as root. The package store is created here so that the compose volume
 # mounted on it starts owned by nao.
@@ -86,13 +107,16 @@ RUN useradd -m -u 1000 -s /bin/bash nao && chown -R nao:nao /opt/naoqi \
 # first: the desktop suite's own has no rule taking Life to a person (autonomous-life.md).
 COPY --from=image-data --chown=1000:1000 autonomy.cfg /home/nao/.config/naoqi/autonomy.cfg
 
+# NAOQI_SIM_HEALTH_VIA: the healthcheck goes through the gateway on the container's own address, as
+# 127.0.0.1:9559 is NAOqi itself once the entrypoint's redirect is in place (status-service.md).
 ENV NAOQI_HOME=/opt/naoqi \
     PATH=/opt/naoqi/bin:$PATH \
     LD_LIBRARY_PATH=/opt/naoqi/lib \
     PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules \
     HOME=/home/nao \
     NAOQI_SIM_VERSION=${NAOQI_SIM_VERSION} \
-    NAOQI_SIM_NAOQI_VERSION=2.8.7.4
+    NAOQI_SIM_NAOQI_VERSION=2.8.7.4 \
+    NAOQI_SIM_HEALTH_VIA=address
 
 USER nao
 WORKDIR /opt/naoqi
