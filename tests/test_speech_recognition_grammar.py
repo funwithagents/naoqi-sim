@@ -1,6 +1,6 @@
-"""The phrases ALSpeechRecognition listens for: the 2.1 dialog's `#BNF+EMV1.1` grammar expanded
-to whole phrases, and the 2.8 dialog's generated sentences (specs/services/speech-recognition.md,
-"What it listens for"), on grammars written for these tests in the dialog's format."""
+"""The phrases ALSpeechRecognition listens for: the dialog's `#BNF+EMV1.1` grammar expanded to
+whole phrases (specs/services/speech-recognition.md, "What it listens for"), on grammars written
+for these tests in the dialog's format."""
 
 import itertools
 
@@ -127,24 +127,6 @@ def test_a_big_sub_rule_inside_unknown_speech_is_kept_whole():
 def test_a_malformed_rule_is_an_error():
     with pytest.raises(grammar.GrammarError):
         grammar.Grammar("#BNF+EMV1.1;\n<start>:(hello;\n")
-
-
-SENTENCES = """(u model:standard app:test topic:greet lang:English line:4) hello robot ?
-(u model:standard app:test topic:greet lang:English line:4) good morning robot !
-(u1 model:standard app:test topic:greet lang:English line:6) yes
-(u^private model:standard app:test topic:greet lang:English line:9) my name is <...>
-(concept model:standard app:test topic:greet lang:English line:2) apple
-(u model:standard app:test topic:greet lang:English line:4) hello robot ?
-"""
-
-
-def test_the_generated_sentences_keep_the_user_rules_once_without_punctuation():
-    assert grammar.sentences(SENTENCES) == [
-        "hello robot",
-        "good morning robot",
-        "yes",
-        "my name is <...>",
-    ]
 
 
 def test_a_full_dialog_sized_grammar_expands_quickly():

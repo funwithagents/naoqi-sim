@@ -2,11 +2,10 @@
 """The phrases ALSpeechRecognition listens for, from what a dialog gives it (Python 2.7, inside
 NAOqi; importable under Python 3 so the host's fast tier tests it).
 
-The 2.1 dialog writes its grammar as text (`#BNF+EMV1.1`) and asks the recognition to compile it;
-`Grammar` reads that text and expands the rules the dialog activated to whole phrases, which is
-what the engine listens for (specs/services/speech-recognition.md, "What it listens for"). The
-2.8 dialog hands over no grammar: the module asks it for each activated topic's sentences
-(`ALDialog.generateSentences`), and `sentences` reads that file.
+The dialog writes its grammar as text (`#BNF+EMV1.1`) and asks for it to be compiled, the
+recognition itself on 2.1, a compiler service on 2.8; `Grammar` reads that text and expands the
+rules the dialog activated to whole phrases, which is what the engine listens for
+(specs/services/speech-recognition.md, "What it listens for").
 """
 import io
 import itertools
@@ -179,23 +178,3 @@ class _Parser(object):
             else:
                 items.append(("word", token))
         return ("seq", items)
-
-
-_SENTENCE = re.compile(r"^\((\S+)[^)]*\)\s*(.*)$", re.UNICODE)
-
-
-def sentences(text):
-    """The user rules' sentences of a file `ALDialog.generateSentences` wrote: one line per
-    sentence, `(<kind> model:... topic:... lang:... line:n) <sentence>`, kinds `u`, `u1`...,
-    `u^private` kept, `concept` and the others left out; the trailing punctuation dropped."""
-    found = []
-    seen = set()
-    for line in text.splitlines():
-        m = _SENTENCE.match(line.strip())
-        if not m or not m.group(1).startswith("u"):
-            continue
-        sentence = m.group(2).strip().rstrip("?!.,;: ").strip()
-        if sentence and sentence not in seen:
-            seen.add(sentence)
-            found.append(sentence)
-    return found

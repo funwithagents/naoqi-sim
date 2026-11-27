@@ -58,6 +58,8 @@ FAKE_QICLI = textwrap.dedent(
     target = args[1]
     if target.split(".")[0] in down:  # a call on a service that did not load
         sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
+    if target == "ALSpeechRecognition.getAvailableLanguages":
+        print(os.environ.get("FAKE_QICLI_RECOGNISED", '["English", "French"]'))
     if target.startswith("NaoqiSim."):
         if "NaoqiSim" in down:
             sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
@@ -158,7 +160,7 @@ MODULES = {
     "naoqi_sim_speech_recognition_almodule "
     "naoqi_sim_face_detection_almodule naoqi_sim_people_perception_almodule "
     "naoqi_sim_perception_stubs_almodule",
-    "2.8": "naoqi_sim_status_qiservice naoqi_sim_speech_qiservice "
+    "2.8": "naoqi_sim_status_qiservice naoqi_sim_life_qiservice naoqi_sim_speech_qiservice "
     "naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice "
     "naoqi_sim_speech_recognition_qiservice "
     "naoqi_sim_face_detection_qiservice naoqi_sim_people_perception_qiservice "
@@ -172,11 +174,31 @@ VISION_2D = {
 }
 
 
-def expected_calls(version: str) -> list[str]:
+# 2.8 chooses each installed language as a NAO 6's settings page does, the robot's own last.
+CHOSEN = ["ALTextToSpeech", "ALSpeechRecognition", "ALDialog"]
+
+
+def expected_calls(
+    version: str, languages: tuple[str, ...] = ("English",)
+) -> list[str]:
     url = URLS[version]
-    return [f"call {m}._setDetectionMode 2D {url}" for m in VISION_2D[version]] + [
-        f"call NaoqiSim.setReady {url}"
-    ]
+    chosen = (
+        [
+            f"call ALSpeechRecognition.getAvailableLanguages {url}",
+            *(
+                f"call {s}.setLanguage {language} {url}"
+                for language in reversed(languages)
+                for s in CHOSEN
+            ),
+        ]
+        if version == "2.8"
+        else []
+    )
+    return (
+        [f"call {m}._setDetectionMode 2D {url}" for m in VISION_2D[version]]
+        + chosen
+        + [f"call NaoqiSim.setReady {url}"]
+    )
 
 
 class Fakes:
@@ -310,6 +332,26 @@ def test_sequence_on_2_1(fakes):
     assert fakes.naoqi_bin("modules-dir") == f"{fakes.naoqi_home}/modules"
 
 
+def test_2_8_chooses_every_installed_language_the_robots_own_last(fakes):
+    ep = Entrypoint(fakes, "2.8", {"NAOQI_SIM_LANGUAGES": "French,English"})
+    ep.wait_for_ready()
+    ep.stop()
+    assert calls_only(fakes) == expected_calls("2.8", ("French", "English"))
+    url = URLS["2.8"]
+    # the dialog's language ends on French, the first of the list
+    assert calls_only(fakes)[-2] == f"call ALDialog.setLanguage French {url}"
+
+
+def test_2_8_leaves_out_a_language_the_recognition_does_not_have(fakes):
+    """German speaks (its voice is fetched) but has no recognition model: it is not chosen, on any
+    of the three, and the boot goes on."""
+    ep = Entrypoint(fakes, "2.8", {"NAOQI_SIM_LANGUAGES": "English,French,German"})
+    ep.wait_for_ready()
+    ep.stop()
+    assert calls_only(fakes) == expected_calls("2.8", ("English", "French"))
+    assert "German is not chosen" in ep.output()
+
+
 def test_sequence_on_2_8(fakes):
     ep = Entrypoint(fakes, "2.8")
     ep.wait_for_ready()
@@ -318,8 +360,9 @@ def test_sequence_on_2_8(fakes):
     url = URLS["2.8"]
     assert calls_only(fakes) == expected_calls("2.8")
     checked = REPLACED + ADDED["2.8"] + KEPT_28
-    # the names checked, then the 2D calls and setReady
-    assert fakes.calls()[-len(checked) - 4 : -4] == [
+    # the names checked, then the 2D calls, the language and setReady
+    last = len(expected_calls("2.8"))
+    assert fakes.calls()[-len(checked) - last : -last] == [
         f"info {name} {url}" for name in checked
     ]
     assert fakes.naoqi_bin("args") == (

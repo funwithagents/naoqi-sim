@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """ALSpeechRecognition for NAOqi 2.8, a qi service in naoqi-service (the gateway relays it), and
-_AsrCompiler1, which the 2.8 dialog waits for: the methods of the robot's module (the table in
+_AsrCompiler1, which the 2.8 dialog gives its grammar to: the methods of the robot's module (the table in
 naoqi_sim_speech_recognition_core), each taking any arguments, since a missing signature stops
 the dialog without a word; the listening in the core, the audio taken in-process from our
 ALAudioDevice (specs/services/speech-recognition.md)."""
-import io
 import os
 import sys
 
@@ -13,7 +12,6 @@ import qi
 import naoqi_sim_audio_device_qiservice as audio_device
 import naoqi_sim_perception_stubs_core as ext
 import naoqi_sim_speech_recognition_core as core
-import naoqi_sim_speech_recognition_grammar as grammar
 
 LOG = ext.JsonLog("/home/nao/speech_recognition.jsonl", "naoqi_sim_speech_recognition_qiservice")
 METHODS = core.methods("2.8")
@@ -50,31 +48,6 @@ class _Lazy(object):
 
 
 _dialog = _Lazy("ALDialog")
-
-
-def _sentences(topic, language):
-    """The user rules' sentences of an activated topic, asked of the dialog; None when it fails
-    or does not answer in time (one topic never returned: it is left out, the others kept)."""
-    dialog = _dialog()
-    if dialog is None:
-        return None
-    path = "/tmp/naoqi_sim_asr_sentences_%s.txt" % topic
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-        future = dialog.generateSentences(path, topic, language, _async=True)
-        future.wait(int(core.SENTENCES_TIMEOUT_S * 1000))
-        if not future.isFinished():
-            _log("generateSentences(%s) did not answer in %.0f s: left out" % (topic, core.SENTENCES_TIMEOUT_S))
-            return None
-        if future.hasError():
-            _log("generateSentences(%s) failed: %s" % (topic, future.error()))
-            return None
-        with io.open(path, encoding="utf-8", errors="replace") as fh:
-            return grammar.sentences(fh.read())
-    except Exception as e:
-        _log("generateSentences(%s) failed: %s" % (topic, e))
-        return None
 
 
 def _audio_device():
@@ -119,7 +92,6 @@ class ALSpeechRecognitionService(object):
             lambda: _audio_device().unlisten(core.NAME),
             core.Feedback(_Lazy("ALAudioPlayer"), _Lazy("ALLeds"), log=_log),
             _dialog,
-            sentences=_sentences,
             installed=installed,
             log=_log,
         )
@@ -155,6 +127,8 @@ for _name, _arity, _defaults, _handler in core.COMPILER_METHODS:
     AsrCompilerService.HANDLERS[_name] = _handler
 
 _service = ALSpeechRecognitionService()
+# The dialog gives its grammar to the compiler service; the recognition reads it and listens for it.
+AsrCompilerService.HANDLERS["compile"] = lambda _self, bnf, lcf, language: core._compile(_service.state, bnf, lcf, language)
 _sid = _session.registerService(core.NAME, _service)
 _cid = _session.registerService(core.COMPILER, AsrCompilerService())
 LOG(method="registered", name=core.NAME, id=_sid, compiler=_cid, engine=core.ENGINE_URL)
