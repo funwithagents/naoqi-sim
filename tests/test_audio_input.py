@@ -544,3 +544,52 @@ def test_check_mic_needs_an_input_device(fake_sounddevice):
     module.query_devices = none
     with pytest.raises(DeviceUnavailableError, match="no default input device"):
         check_mic()
+
+
+def test_a_muted_microphone_is_closed_and_the_robot_hears_silence_on_time(
+    device, fake_sounddevice
+):
+    """Muting closes the device (the system's indicator goes off) while the robot keeps getting
+    chunks at a NAO's cadence, all zeros; unmuting reopens it and the room comes back."""
+    streams, _ = fake_sounddevice
+    mic = MicSource()
+    dev, conn, _ = device(source=mic)
+    dev.start()
+    dev.message(conn, need(FRONT), b"")
+    time.sleep(0.3)
+    assert np.abs(conn.pcm(FRONT)[-1][2]).max() > 2500  # the room
+
+    mic.mute()
+    assert mic.muted and streams[0].calls == ["start", "stop", "close"]
+    muted_at = time.monotonic()
+    time.sleep(0.2)  # a chunk captured before the mute may still be on its way
+    sent = len(conn.pcm(FRONT))
+    time.sleep(0.6)
+    chunks = conn.pcm(FRONT)[sent:]
+    assert len(chunks) >= 5  # still one every 85 ms
+    assert all(np.abs(c).max() == 0 for _, _, c in chunks)
+    assert len(streams) == 1  # nothing reopened while muted
+    assert time.monotonic() - muted_at < 2
+
+    mic.mute(False)
+    assert not mic.muted and len(streams) == 2 and streams[1].calls == ["start"]
+    time.sleep(0.4)
+    assert np.abs(conn.pcm(FRONT)[-1][2]).max() > 2500  # the room again
+    dev.stop()
+    assert streams[1].calls == ["start", "stop", "close"]
+
+
+def test_a_mute_before_the_input_starts_holds_and_a_stop_forgets_it(fake_sounddevice):
+    streams, _ = fake_sounddevice
+    mic = MicSource()
+    mic.mute()
+    mic.open()
+    assert streams == []  # muted: the device stays closed
+    assert np.abs(mic.read(0.0, 480)).max() == 0
+    mic.close()
+    assert not mic.muted  # the next run starts unmuted
+    mic.open()
+    try:
+        assert len(streams) == 1 and streams[0].calls == ["start"]
+    finally:
+        mic.close()

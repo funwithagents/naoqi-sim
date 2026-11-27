@@ -165,6 +165,33 @@ class NaoqiSim:
             )
         return self._video_input
 
+    async def mute_input(self, muted: bool = True) -> None:
+        """Mute the host microphone (`False` unmutes it): its device is closed and the robot
+        hears silence (specs/host/audio-input.md, "Muting the microphone")."""
+        self.url  # noqa: B018  (raises NotRunningError)
+        mic = self._mic()
+        if mic is None:
+            raise NaoqiSimError(
+                f"audio_input.source is {self._config.audio_input.source!r}, not 'mic': "
+                "no microphone to mute"
+            )
+        await asyncio.to_thread(mic.mute, muted)
+
+    async def mute_output(self, muted: bool = True) -> None:
+        """Mute the loudspeakers (`False` unmutes them): the device plays silence, the robot
+        plays on (specs/host/audio-output.md, "Muting the loudspeakers")."""
+        self.url  # noqa: B018  (raises NotRunningError)
+        if not isinstance(self._sink, DevicePlayer):
+            raise NaoqiSimError(
+                f"the audio goes to a {type(self._sink).__name__}, not the loudspeakers "
+                "(audio_output.mode 'play'): nothing to mute"
+            )
+        self._sink.muted = muted
+
+    def _mic(self) -> MicSource | None:
+        source = self._audio_input.source if self._audio_input is not None else None
+        return source if isinstance(source, MicSource) else None
+
     async def stop_activity_gesture(self) -> None:
         """The gesture a person stops the focused activity with on this version
         (specs/host/touch-input.md, "What a touch does, per version"): on 2.1 the three head
@@ -296,6 +323,8 @@ class NaoqiSim:
         log.info(
             "%s: starting the audio output (%s)", self._label, type(self._sink).__name__
         )
+        if isinstance(self._sink, DevicePlayer):
+            self._sink.muted = False  # each run starts unmuted
         self._audio_output = AudioOutput(self._sink)
         server = Server(("0.0.0.0", AUDIO_OUTPUT_PORT), self._audio_output)
         thread = threading.Thread(
@@ -437,6 +466,8 @@ class NaoqiSim:
             self._touch,
             self._video_input,
             robot=Robot(),  # the robot's buttons, relayed to NAOqi on a session of its own
+            mic=self._mic(),
+            player=self._sink if isinstance(self._sink, DevicePlayer) else None,
         )
         # Registered last, so the teardown stops it first and its holds are released.
         self._undo.append(("controls", self._stop_controls))

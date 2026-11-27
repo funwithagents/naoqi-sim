@@ -53,6 +53,8 @@ You now have:
 - **its ears**: your microphone (macOS asks for access once);
 - **its voice** on your loudspeaker.
 
+The **Mic** and **Robot** buttons at the top right of the controls page mute your microphone (switched off: the robot hears silence) and your loudspeakers (the robot speaks on, unheard).
+
 On the controls page, click **Wake up**, then **Stand**.
 
 ## 6. Connect to it

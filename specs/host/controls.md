@@ -6,6 +6,8 @@ code:
   - src/naoqi_sim/sim.py
   - src/naoqi_sim/video_input.py
   - src/naoqi_sim/cli.py
+  - src/naoqi_sim/audio_input.py
+  - src/naoqi_sim/audio_output.py
 tests:
   - tests/test_controls.py
   - tests/test_config.py
@@ -25,6 +27,8 @@ tests:
 What a person standing next to a NAO does to it with their hands, on a simulated one: touch its head, hold three sensors for three seconds, put a hand over its camera. The controls are a small web page a running `NaoqiSim` serves, with a button for each of these, and the HTTP API behind the page, which any program can call. The page also shows the robot's motors, posture and Autonomous Life, with buttons that ask NAOqi to change them ("The robot").
 
 The controls own no signal. Each control drives the device or module that owns its signal: the touch sensors are the touch input's ([touch-input.md](touch-input.md)), the camera cover the video input's ([video-input.md](video-input.md)). A test in Python calls those through the `NaoqiSim` object and needs no page; the page is for a person, and its HTTP API for a program that is not Python or not the one that owns the `NaoqiSim`. More signals of the simulated robot get their control here as they are built (open question 1).
+
+Two buttons are the user's rather than the robot's: muting their own microphone and their own loudspeakers ("The mutes"). Each drives the audio device that owns the signal, as the others do.
 
 The robot's buttons are different: they own nothing either, and drive no device. Each one is a NAOqi call any qi client makes on a NAO (`ALMotion.wakeUp()`, `ALRobotPosture.goToPosture()`, `ALAutonomousLife.setState()`...), relayed by the server because a browser cannot speak qi. A program calls NAOqi itself, so `NaoqiSim` has no Python API for them.
 
@@ -58,6 +62,7 @@ Decided Nov 25, 2026; the block's name, `controls`, is the user's.
 
 One page, no build step, no external resource, shipped as package data (`src/naoqi_sim/controls.html`, served at `/`). It shows the robot's state as the server reports it, whoever changed it (the page, another page, a test in Python), polled a few times a second.
 
+- **The title line**: the page's title and its connection status, and at its right end two small toggle buttons, one per mute ("The mutes"): **Mic** (a microphone icon) and **Robot** (a loudspeaker icon). Each shows only when its side can be muted: Mic with the `mic` source, Robot with a `DevicePlayer`. While muted, the button is filled in the warning colour, its icon struck through and its label says so ("Mic muted", "Robot muted"), so a forgotten mute is seen at once; `aria-pressed` and a tooltip say what it does. In a narrow window the title line wraps and the buttons stay at the top.
 - **Touch**: an outline of the robot with its 13 sensors and a legend for its two states, kept apart: **pressed** (filled: the robot feels it, whoever pressed it) and **selected** (a dashed outline: what the buttons press; the selection is the page's own and presses nothing). A click selects or unselects a sensor; "Select the head" selects the three head sensors, "Clear selection" empties it. The buttons press the selection, all its sensors together: "Tap" for 0.2 s, "Press for" the duration in the field beside it (0 to 60 s), "Keep pressed" until "Release all", which releases everything the page keeps pressed. Two lines under the buttons name the selected sensors and the pressed ones, with those the page keeps pressed.
 - **Robot**, first in the side column, and first of all in one column (a narrow window, as beside the sim window), above Touch: four lines, each the robot's state as NAOqi reports it beside the buttons that change it ("The robot"): **Motors** (awake or resting) with "Wake up" and "Rest"; **Stiffness** (on, off, or partial with its range) with "On" and "Off"; **Posture** (NAOqi's name for it) with "Stand", "StandInit", "Sit" and "Crouch"; **Life** (its state and the focused activity) with "On" and "Off". While an action runs, the panel names it and its buttons are disabled; an action NAOqi refuses shows NAOqi's answer on the panel's own message line.
 - **Cameras and gestures**, one panel: a "covered" switch per head camera, disabled for a camera with no source; "Stop the activity", which does the running version's gesture ([touch-input.md](touch-input.md), "What a touch does"): on 2.1 the three head sensors for 3.5 s; on 2.8 the top camera covered, the front sensor for 2 s, the camera uncovered.
@@ -69,11 +74,13 @@ JSON over HTTP on the same port; the page uses nothing else.
 | Request | Body | Does |
 | --- | --- | --- |
 | `GET /` | | The page |
-| `GET /api/state` | | `{"naoqi_version", "touch": {"pressed": [...], "held": [...]}, "cameras": {"top": {"covered": false, "fed": true}, "bottom": {...}}, "robot": {...}}`: `pressed` by anyone, `held` by the controls; `robot` as "The robot" says |
+| `GET /api/state` | | `{"naoqi_version", "touch": {"pressed": [...], "held": [...]}, "cameras": {"top": {"covered": false, "fed": true}, "bottom": {...}}, "robot": {...}, "audio": {"input": {"mutable": true, "muted": false}, "output": {...}}}`: `pressed` by anyone, `held` by the controls; `robot` as "The robot" says; `audio` as "The mutes" says |
 | `POST /api/touch/press` | `{"sensors": [...]}` | Presses them together |
 | `POST /api/touch/release` | `{"sensors": [...]}`, or `{}` for all the controls hold | Releases them |
 | `POST /api/touch/tap` | `{"sensors": [...], "duration_s": 0.2}` | Presses, waits, releases; answers at the release |
 | `POST /api/cameras/<top or bottom>` | `{"covered": true}` | Covers or uncovers the camera |
+| `POST /api/audio/input` | `{"muted": true}` | Mutes or unmutes the microphone ("The mutes") |
+| `POST /api/audio/output` | `{"muted": true}` | Mutes or unmutes the loudspeakers |
 | `POST /api/gestures/stop-activity` | | The version's stop gesture ("The gesture"); answers when it is done |
 | `POST /api/robot/motors` | `{"action": "wake_up"}` or `"rest"` | `ALMotion.wakeUp()` or `rest()`; answers when it returns |
 | `POST /api/robot/stiffness` | `{"on": true}` | `ALMotion.setStiffnesses("Body", 1.0 or 0.0)` |
@@ -82,7 +89,7 @@ JSON over HTTP on the same port; the page uses nothing else.
 
 Every `POST` answers the state as `GET /api/state` does, after the change.
 
-- Sensor names are the touch input's, `"Head"` included. An unknown sensor, camera or gesture, a missing sensor list or a tap's `duration_s` outside 0 to 60 s answers 400 with `{"error": ...}`; an unknown path 404; a control whose device is not running (a camera with no source), a robot action while another runs, or `goToPosture` answering `False` 409; a failure inside NAOqi 500, with its message. Requests are served on their own threads, so a tap or a gesture in progress does not hold the page; gestures run one at a time.
+- Sensor names are the touch input's, `"Head"` included. An unknown sensor, camera or gesture, a missing sensor list or a tap's `duration_s` outside 0 to 60 s answers 400 with `{"error": ...}`; an unknown path 404; a control whose device is not running (a camera with no source, a mute of a side that has none), a robot action while another runs, or `goToPosture` answering `False` 409; a failure inside NAOqi 500, with its message. Requests are served on their own threads, so a tap or a gesture in progress does not hold the page; gestures run one at a time.
 - What the controls press is theirs: the touch input keeps a sensor pressed while the controls or the Python API hold it ([touch-input.md](touch-input.md), "The device"). The server releases its holds when it stops.
 - **Local only.** The server binds `127.0.0.1` and has no authentication. Because any web page open in the user's browser can send requests to a local port, it refuses a request whose `Host` is not its own address (`127.0.0.1:<port>` or `localhost:<port>`) with 403, a `POST` whose `Origin` is another site's with 403, and one whose content type is not `application/json` with 415 (a form can post `text/plain` across sites without asking).
 
@@ -94,6 +101,16 @@ Every `POST` answers the state as `GET /api/state` does, after the change.
 - **2.8**: the top camera covered, 0.5 s for the covered frames to reach [brightness-statistics.md](../services/brightness-statistics.md), the front sensor held 2 s (inside Life's 1 to 2.9 s window) and released, 0.5 s more so the release is seen while dark, as a hand leaves the head before the forehead, then the camera uncovered, unless it was covered before the gesture. `CameraNotFedError` (409 over HTTP) without a fed top camera.
 
 Life stops the activity a few seconds after the release on both versions (2.6 s on the 2.1 sim, 0 to 3 s on 2.8); the gesture does not wait for it.
+
+### The mutes
+
+Decided Nov 27, 2026, at the user's request: the person at the computer silences their microphone or their loudspeakers without stopping the sim, from two buttons always in sight (the title line, not a panel).
+
+- **The microphone** (`audio_input.source = "mic"`): its device is closed, the operating system's indicator goes off, and the robot hears silence at the normal cadence ([audio-input.md](audio-input.md), "Muting the microphone").
+- **The loudspeakers** (`audio_output.mode = "play"`): the device plays silence; the robot plays on, its speech and sounds timed and reported as before, and a fake microphone still hears it ([audio-output.md](audio-output.md), "Muting the loudspeakers").
+- `audio` in `GET /api/state`: per side, `mutable` (the `mic` source; a `DevicePlayer` sink) and `muted`. A mute of a side that is not mutable answers 409; `muted` missing or not a boolean 400.
+- The state is the devices', so a mute from Python shows on the page. Neither survives a stop: the next run starts unmuted.
+- In Python: `await sim.mute_input()`, `await sim.mute_output()`, `False` to unmute ([api.md](../runtime/api.md)).
 
 ### The robot
 
@@ -132,7 +149,7 @@ A covered camera sees what a hand over it gives, whatever feeds the camera: the 
 
 ### Tests
 
-- **Fast tier** (`tests/test_controls.py`): the server over the real touch input and video input on fake NAOqi services: each request changes the device as the table says and `GET /api/state` shows it; the 400, 404 and 409 answers; the refused `Host`, `Origin` and content type; the holds released at stop; the page is served, names every sensor and loads nothing external; each version's gesture, step by step; the robot's buttons against a fake NAOqi that behaves as measured: each is its NAOqi call, the state is NAOqi's, one action at a time (409), `goToPosture` False (409), NAOqi raising (500) or not answering (`robot.error`, the rest of the state served), bad bodies (400).
+- **Fast tier** (`tests/test_controls.py`): the server over the real touch input and video input on fake NAOqi services: each request changes the device as the table says and `GET /api/state` shows it; the 400, 404 and 409 answers; the refused `Host`, `Origin` and content type; the holds released at stop; the page is served, names every sensor and loads nothing external; each version's gesture, step by step; the mutes over HTTP against the real `MicSource` and `DevicePlayer` on a fake `sounddevice` (the input stream closed and reopened, zeros written while muted, `audio` in the state, 409 for a side that is not mutable, 400 for a bad body), and the page's two buttons; the robot's buttons against a fake NAOqi that behaves as measured: each is its NAOqi call, the state is NAOqi's, one action at a time (409), `goToPosture` False (409), NAOqi raising (500) or not answering (`robot.error`, the rest of the state served), bad bodies (400).
 - **Live tier** (`tests-e2e/test_touch_live.py`, the live tier runs with the controls on): through HTTP, a press reaches `ALTouch` and its event and the stop gesture stops a focused activity, on both versions. `tests-e2e/test_controls_robot_live.py`: through HTTP, rest, a posture with the stiffness off, wake up, stiffness off and on, and Life on and off each reach NAOqi and show in `robot`, on both versions.
 
 ## Open questions

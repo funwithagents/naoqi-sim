@@ -46,7 +46,7 @@ naoqi-sim runs Aldebaran's own NAOqi, so most of what a NAO does is NAOqi itself
 | | |
 |---|---|
 | **Touch sensors** | The 13 head, hand and foot sensors, pressed from the controls page, from Python or over HTTP; `ALTouch` and the touch events follow |
-| **The controls page** | A web page on `127.0.0.1` to wake the robot up or rest it, set its stiffness and posture, switch Life on and off, touch its sensors, cover a camera, stop the running activity |
+| **The controls page** | A web page on `127.0.0.1` to wake the robot up or rest it, set its stiffness and posture, switch Life on and off, touch its sensors, cover a camera, stop the running activity; mute your microphone or your loudspeakers |
 
 ## The window
 

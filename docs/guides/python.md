@@ -98,6 +98,15 @@ await (
 )  # this NAOqi version's gesture to stop the running activity
 ```
 
+**Your microphone and loudspeakers.** With the `mic` source, muting switches your microphone off and the robot hears silence; with the `play` mode, muting silences your loudspeakers while the robot speaks on, its timing and events unchanged. Both end with the run:
+
+```python
+await sim.mute_input()  # the robot hears nothing from you
+await sim.mute_input(False)
+await sim.mute_output()  # you stop hearing the robot
+await sim.mute_output(False)
+```
+
 **What the robot said.** Pass a `MemorySink` to keep the audio instead of playing it:
 
 ```python

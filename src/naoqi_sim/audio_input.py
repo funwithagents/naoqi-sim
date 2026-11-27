@@ -314,7 +314,10 @@ def check_mic() -> None:
 
 
 class MicSource:
-    """The host's default input device: 48 kHz mono int16, captured in 10 ms blocks while open."""
+    """The host's default input device: 48 kHz mono int16, captured in 10 ms blocks while open.
+
+    The user can mute it (`mute()`): the device is closed until unmuted, and reads give silence
+    (specs/host/audio-input.md, "Muting the microphone")."""
 
     name = "mic"
 
@@ -324,10 +327,50 @@ class MicSource:
         self._blocks: deque[bytes] = deque(maxlen=MIC_BACKLOG)
         self._pending = b""
         self._lock = threading.Lock()
+        self._device = threading.Lock()  # open, close and mute, from any thread
+        self._active = False  # between open() and close()
+        self._muted = False
         self.captured = 0  # blocks captured since created, for diagnostics
         self.peak = 0  # the loudest sample captured
 
+    @property
+    def muted(self) -> bool:
+        return self._muted
+
     def open(self) -> None:
+        """The input starts: the device opens, unless the user muted it."""
+        with self._device:
+            self._active = True
+            if not self._muted:
+                self._open()
+
+    def close(self) -> None:
+        """The input stops: the device closes, and the next run starts unmuted."""
+        with self._device:
+            self._active = False
+            self._muted = False
+            self._close()
+        self.skip()
+
+    def mute(self, muted: bool = True) -> None:
+        """Mute (close the device: the robot hears silence) or unmute (reopen it)."""
+        with self._device:
+            if muted == self._muted:
+                return
+            self._muted = muted
+            log.info(
+                "audio input: the microphone is %s", "muted" if muted else "unmuted"
+            )
+            if not self._active:
+                return
+            if muted:
+                self._close()
+            else:
+                self._open()
+        if muted:
+            self.skip()
+
+    def _open(self) -> None:
         import sounddevice as sd
 
         def captured(indata, frames, time_info, status) -> None:
@@ -351,13 +394,12 @@ class MicSource:
         self._stream.start()
         log.info("audio input: the microphone is live")
 
-    def close(self) -> None:
+    def _close(self) -> None:
         stream, self._stream = self._stream, None
         if stream is not None:
             stream.stop()
             stream.close()
             log.info("audio input: the microphone is off")
-        self.skip()
 
     def skip(self) -> None:
         with self._lock:

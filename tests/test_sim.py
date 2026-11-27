@@ -14,10 +14,11 @@ import wave
 import numpy as np
 import pytest
 from ports import free_port
+from test_audio_input import fake_sounddevice  # noqa: F401 (a fixture)
 
 from naoqi_sim import docker_images, sim, stack, webcam
 from naoqi_sim.audio_input import FakeAudioSource
-from naoqi_sim.audio_output import MemorySink
+from naoqi_sim.audio_output import DevicePlayer, MemorySink
 from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
@@ -769,3 +770,68 @@ def test_a_taken_controls_port_fails_before_anything_starts(env):
         with pytest.raises(PortInUseError):
             asyncio.run(sim.NaoqiSim(config, sink=MemorySink()).start())
     assert compose_calls(env) == []
+
+
+def test_the_loudspeakers_mute_from_python_shows_on_the_page_and_ends_with_the_run(env):
+    port = free_port()
+    player = DevicePlayer()  # opens no device until something plays
+    config = sim_config(
+        viewer=HEADLESS, controls=ControlsSettings(enabled=True, port=port)
+    )
+    naoqisim = sim.NaoqiSim(config, sink=player)
+
+    async def scenario() -> None:
+        async with naoqisim:
+            await naoqisim.mute_output()
+            assert player.muted
+            url = f"{naoqisim.controls_url}api/state"
+            answer = await asyncio.to_thread(lambda: urllib.request.urlopen(url).read())
+            audio = json.loads(answer)["audio"]
+            assert audio["output"] == {"mutable": True, "muted": True}
+            assert audio["input"] == {"mutable": False, "muted": False}  # no microphone
+            with pytest.raises(NaoqiSimError, match="not 'mic'"):
+                await naoqisim.mute_input()
+
+    asyncio.run(scenario())
+    asyncio.run(naoqisim.start())  # the next run starts unmuted
+    try:
+        assert not player.muted
+    finally:
+        asyncio.run(naoqisim.stop())
+
+
+def test_the_mutes_need_the_microphone_and_the_loudspeakers(env):
+    naoqisim = sim.NaoqiSim(sim_config(viewer=HEADLESS), sink=MemorySink())
+    with pytest.raises(NotRunningError):
+        asyncio.run(naoqisim.mute_output())
+
+    async def scenario() -> None:
+        async with naoqisim:
+            with pytest.raises(NaoqiSimError, match="MemorySink, not the loudspeakers"):
+                await naoqisim.mute_output()
+            with pytest.raises(NaoqiSimError, match="not 'mic'"):
+                await naoqisim.mute_input(False)
+
+    asyncio.run(scenario())
+
+
+def test_the_microphone_mute_from_python_switches_the_device_off(
+    env,
+    monkeypatch,
+    fake_sounddevice,  # noqa: F811
+):
+    streams, _ = fake_sounddevice
+    monkeypatch.setattr(sim, "check_mic", lambda: None)
+    config = sim_config(viewer=HEADLESS, audio_input=AudioInputSettings(source="mic"))
+    naoqisim = sim.NaoqiSim(config, sink=MemorySink())
+
+    async def scenario() -> None:
+        async with naoqisim:
+            assert streams[0].calls == ["start"]  # live for the run
+            await naoqisim.mute_input()
+            assert streams[0].calls == ["start", "stop", "close"]
+            await naoqisim.mute_input(False)
+            assert len(streams) == 2 and streams[1].calls == ["start"]
+
+    asyncio.run(scenario())
+    assert streams[1].calls == ["start", "stop", "close"]
