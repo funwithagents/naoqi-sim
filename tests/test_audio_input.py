@@ -318,6 +318,9 @@ class BlockingSource:
     def close(self) -> None:
         pass
 
+    def skip(self) -> None:
+        pass
+
     def read(self, start: float, frames: int) -> np.ndarray:
         if not self.gate.is_set():
             self.reading.set()
@@ -446,6 +449,7 @@ class FakeInputStream:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.calls: list[str] = []
+        self.paused = threading.Event()  # set: the room is silent, nothing captured
 
     def start(self):
         self.calls.append("start")
@@ -453,7 +457,8 @@ class FakeInputStream:
 
         def feed():
             while "stop" not in self.calls:
-                self.kwargs["callback"](block, self.kwargs["blocksize"], None, None)
+                if not self.paused.is_set():
+                    self.kwargs["callback"](block, self.kwargs["blocksize"], None, None)
                 time.sleep(0.01)
 
         threading.Thread(target=feed, daemon=True).start()
@@ -480,16 +485,16 @@ def fake_sounddevice(monkeypatch):
     return streams, module
 
 
-def test_the_microphone_opens_with_the_first_need_and_closes_with_the_last(
+def test_the_microphone_is_open_for_the_whole_run_whatever_naoqi_needs(
     device, fake_sounddevice
 ):
+    """A NAO's microphones are always on: the stream opens at start and closes at stop, not
+    with each subscription (speech recognition subscribes around each listening); audio
+    captured while nothing was needed is not sent when a need comes back."""
     streams, _ = fake_sounddevice
     dev, conn, session = device(source=MicSource())
     dev.start()
-    assert streams == []  # nothing needed yet: the microphone stays off
-    dev.message(conn, need(FRONT), b"")
-    time.sleep(0.5)
-    assert len(streams) == 1
+    assert len(streams) == 1 and streams[0].calls == ["start"]  # open before any need
     kwargs = streams[0].kwargs
     assert (kwargs["samplerate"], kwargs["channels"], kwargs["dtype"]) == (
         48000,
@@ -497,11 +502,36 @@ def test_the_microphone_opens_with_the_first_need_and_closes_with_the_last(
         "int16",
     )
     assert kwargs["latency"] == "low"  # little capture delay, as a NAO's
+    for _ in range(3):  # listening on, off, on...
+        dev.message(conn, need(FRONT), b"")
+        time.sleep(0.3)
+        dev.message(conn, need(), b"")
+    assert len(streams) == 1 and streams[0].calls == [
+        "start"
+    ]  # never reopened, still on
     chunks = [c for _, _, c in conn.pcm(FRONT)]
     assert chunks and np.abs(chunks[-1]).max() > 2500  # what it captured
-    dev.message(conn, need(), b"")
+    dev.stop()
     assert streams[0].calls == ["start", "stop", "close"]
     assert ("NaoqiSim/Audio/Source", "mic") in session.memory.writes
+
+
+def test_a_need_coming_back_gets_live_audio_not_the_backlog(fake_sounddevice):
+    streams, _ = fake_sounddevice
+    """What the open microphone captured while nothing read it is dropped when reading
+    resumes: the first block is the room now, not up to 200 ms ago."""
+    mic = MicSource()
+    mic.open()
+    try:
+        time.sleep(0.1)  # blocks pile up, nobody reads
+        assert np.abs(mic.read(0.0, 480)).max() > 2500  # the backlog, as it was
+        time.sleep(0.1)
+        streams[0].paused.set()
+        time.sleep(0.05)  # a block in flight has landed
+        mic.skip()
+        assert np.abs(mic.read(0.0, 480)).max() == 0  # dropped: nothing captured since
+    finally:
+        mic.close()
 
 
 def test_check_mic_needs_an_input_device(fake_sounddevice):
