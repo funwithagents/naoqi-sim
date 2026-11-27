@@ -72,8 +72,8 @@ naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "2
 [tool.ruff]
 target-version = "py312"  # keep in sync with requires-python
 # docker/naoqi/services/ is Python 2.7 running inside NAOqi (naoqi, qi, urllib2): not linted here.
-# spike/ holds local, untracked investigation scripts.
-extend-exclude = ["docker/naoqi/services", "spike"]
+# analysis/ (local investigation notes and scripts) is gitignored, which ruff respects.
+extend-exclude = ["docker/naoqi/services"]
 
 [tool.pytest.ini_options]
 # Only the fast, deterministic tier is collected by default; tests-e2e/ is opt-in.
