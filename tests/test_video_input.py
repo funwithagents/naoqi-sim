@@ -415,3 +415,53 @@ def test_stop_does_not_wait_on_a_blocked_source(naoqi, monkeypatch):
     assert time.monotonic() - started < 1.0
     assert naoqi.memory["NaoqiSim/Camera/Source"] == "none"
     device.stop()  # twice is harmless
+
+
+def _frame(put) -> np.ndarray:
+    return np.frombuffer(put[3], np.uint8).reshape(480, 640, 3)
+
+
+def test_a_covered_camera_sees_a_hand_until_uncovered_and_the_other_its_source(naoqi):
+    """A hand over the top camera: the dark frame of a real NAO's covered camera (a luminance of
+    17.5 once NAOqi converts it) in place of the source's, while the bottom camera still gets its own."""
+    device = running(Frames(), naoqi)
+    device.cover("top")
+    assert device.covered() == {"top": True, "bottom": False}
+    naoqi.puts.clear()  # a frame rendered before the cover may still come: read the last ones
+    wait_until(lambda: len(puts_into(naoqi, 0)) >= 3 and len(puts_into(naoqi, 1)) >= 3)
+    top = _frame([p for p in naoqi.puts if p[0] == 0][-1])
+    bottom = _frame([p for p in naoqi.puts if p[0] == 1][-1])
+    # the grey NAOqi's studio-range conversion turns into a luminance of 17.5
+    assert 16 + 219 / 255 * top.mean() == pytest.approx(17.5, abs=0.01)
+    assert top.std() < 1
+    assert bottom.min() >= 128  # the bottom camera's own frames
+
+    device.cover("top", False)
+    naoqi.puts.clear()
+    wait_until(lambda: len(puts_into(naoqi, 0)) >= 3)
+    device.stop()
+    assert (
+        _frame([p for p in naoqi.puts if p[0] == 0][-1]).std() == 0
+    )  # the source again
+    assert device.covered() == {"top": False, "bottom": False}
+
+
+def test_only_a_fed_camera_can_be_covered(naoqi):
+    device = VideoInput(Frames().sources("top"), {"top": 10}, connect=lambda: naoqi)
+    with pytest.raises(
+        video_input.CameraNotFedError, match="bottom camera gets no frames"
+    ):
+        device.cover("bottom")
+    with pytest.raises(ValueError, match="unknown camera 'side'"):
+        device.cover("side")
+    assert device.covered() == {"top": False, "bottom": False}
+
+
+def test_a_closed_source_uncovers_its_cameras(naoqi):
+    world = Frames()
+    device = running(world, naoqi, cameras=("top",))
+    device.cover("top")
+    world.closed = True
+    wait_until(lambda: device.fed == ())
+    device.stop()
+    assert device.covered() == {"top": False, "bottom": False}

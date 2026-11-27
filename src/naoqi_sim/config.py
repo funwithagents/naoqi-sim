@@ -498,6 +498,27 @@ class SpeechRecognitionSettings(_Loaders):
 
 
 @dataclass(frozen=True)
+class ControlsSettings(_Loaders):
+    """The controls page and its HTTP API (specs/host/controls.md)."""
+
+    enabled: bool = False
+    port: int = 9564  # on 127.0.0.1 only
+    open: bool = False  # open the page in the default browser once the robot is ready
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.port <= 65535:
+            raise ConfigError(
+                f"must be a port, 1 to 65535, got {self.port}", key="port"
+            )
+
+    @classmethod
+    def parse(cls, data: Any, path: str) -> Self:
+        return _parse_block(
+            cls, data, path, {"enabled": _as_bool, "port": _as_int, "open": _as_bool}
+        )
+
+
+@dataclass(frozen=True)
 class NaoqiSimConfig(_Loaders):
     """A simulated NAO: its NAOqi, its engines, its host devices and its viewer."""
 
@@ -511,6 +532,7 @@ class NaoqiSimConfig(_Loaders):
     speech_recognition: SpeechRecognitionSettings = field(
         default_factory=SpeechRecognitionSettings
     )
+    controls: ControlsSettings = field(default_factory=ControlsSettings)
 
     def __post_init__(self) -> None:
         if self.robot.posture == "sit" and self.naoqi.version == "2.8":
@@ -537,6 +559,7 @@ class NaoqiSimConfig(_Loaders):
                 "speech_recognition": lambda d: SpeechRecognitionSettings.parse(
                     d, "speech_recognition"
                 ),
+                "controls": lambda d: ControlsSettings.parse(d, "controls"),
             },
         )
 

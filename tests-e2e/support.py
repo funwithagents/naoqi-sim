@@ -36,6 +36,7 @@ IMAGE_DATA = REPO / "docker" / "image-data"
 URL = "tcp://127.0.0.1:9559"
 AUDIO_OUTPUT_PORT = 9562
 HOST_LINK_PORT = 9563
+CONTROLS_PORT = 9564
 REQUIRED = os.environ.get("NAOQI_SIM_E2E_VERSION") or None  # CI: this version must run
 # "loopback": the default audio output and input are wired to each other (CI's PulseAudio null
 # sink), so the tests that use real sound devices run; without it they skip.
@@ -324,6 +325,7 @@ def require_free_ports() -> None:
         (9559, "NAOqi"),
         (AUDIO_OUTPUT_PORT, "audio output"),
         (HOST_LINK_PORT, "host link"),
+        (CONTROLS_PORT, "controls"),
     ):
         if _port_taken(port):
             pytest.fail(

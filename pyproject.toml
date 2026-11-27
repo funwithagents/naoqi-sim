@@ -105,6 +105,7 @@ extraPaths = [
     "docker/naoqi/services/launchpad-people",
     "docker/naoqi/services/perception-stubs",
     "docker/naoqi/services/speech-recognition",
+    "docker/naoqi/services/brightness-statistics",
     "docker/tts-engine",
 ]
 typeCheckingMode = "standard"

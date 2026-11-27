@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>naoqi-sim controls</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #d9d9d4;
+    --body: #e9e9e4; --sensor: #c9cfd8; --hover: #9fb3cc; --pressed: #e0592a; --held: #b8401a;
+    --accent: #2d5fa3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #20201e; --ink: #ecece8; --muted: #9a9a94; --line: #3a3a36;
+      --body: #2c2c29; --sensor: #4a5260; --hover: #64809f; --pressed: #ff7a45; --held: #ff9a6e;
+      --accent: #7fa8e0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex;
+           align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; }
+  #status { color: var(--muted); }
+  #status.error { color: var(--pressed); }
+  main { display: grid; grid-template-columns: minmax(260px, 360px) minmax(240px, 1fr); gap: 16px;
+         padding: 16px; max-width: 900px; }
+  @media (max-width: 640px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+            padding: 12px 14px; }
+  section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+               color: var(--muted); margin: 0 0 10px; }
+  .side { display: flex; flex-direction: column; gap: 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .bodypart { fill: var(--body); stroke: var(--line); }
+  .sensor { fill: var(--sensor); stroke: var(--panel); stroke-width: 2; cursor: pointer; }
+  .sensor:hover { fill: var(--hover); }
+  .sensor.pressed { fill: var(--pressed); }
+  .sensor.held { stroke: var(--held); stroke-width: 3; }
+  .label { font-size: 10px; fill: var(--muted); pointer-events: none; }
+  .hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=number] { width: 5em; font: inherit; padding: 5px; border-radius: 6px;
+                       border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  label.switch { display: flex; gap: 8px; align-items: center; }
+  #pressed { color: var(--muted); font-size: 12px; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>naoqi-sim controls</h1>
+  <span id="status">connecting…</span>
+</header>
+<main>
+  <section>
+    <h2>Touch</h2>
+    <svg viewBox="0 0 240 330" aria-label="The robot's touch sensors">
+      <!-- head -->
+      <rect class="bodypart" x="80" y="20" width="80" height="70" rx="30"/>
+      <!-- torso -->
+      <rect class="bodypart" x="85" y="100" width="70" height="95" rx="14"/>
+      <!-- arms and hands -->
+      <rect class="bodypart" x="45" y="105" width="30" height="80" rx="12"/>
+      <rect class="bodypart" x="165" y="105" width="30" height="80" rx="12"/>
+      <!-- legs and feet -->
+      <rect class="bodypart" x="90" y="200" width="26" height="80" rx="10"/>
+      <rect class="bodypart" x="124" y="200" width="26" height="80" rx="10"/>
+
+      <!-- head sensors, seen from the robot's front (its left on our right) -->
+      <rect class="sensor" data-sensor="Head/Touch/Front" x="95" y="8" width="50" height="14" rx="6"/>
+      <rect class="sensor" data-sensor="Head/Touch/Middle" x="95" y="24" width="50" height="14" rx="6"/>
+      <rect class="sensor" data-sensor="Head/Touch/Rear" x="95" y="40" width="50" height="14" rx="6"/>
+      <text class="label" x="150" y="18">front</text>
+      <text class="label" x="150" y="34">middle</text>
+      <text class="label" x="150" y="50">rear</text>
+
+      <!-- right hand on our left -->
+      <rect class="sensor" data-sensor="RHand/Touch/Back" x="44" y="190" width="32" height="12" rx="5"/>
+      <rect class="sensor" data-sensor="RHand/Touch/Left" x="44" y="204" width="15" height="16" rx="5"/>
+      <rect class="sensor" data-sensor="RHand/Touch/Right" x="61" y="204" width="15" height="16" rx="5"/>
+      <text class="label" x="30" y="236">right hand</text>
+      <!-- left hand on our right -->
+      <rect class="sensor" data-sensor="LHand/Touch/Back" x="164" y="190" width="32" height="12" rx="5"/>
+      <rect class="sensor" data-sensor="LHand/Touch/Left" x="181" y="204" width="15" height="16" rx="5"/>
+      <rect class="sensor" data-sensor="LHand/Touch/Right" x="164" y="204" width="15" height="16" rx="5"/>
+      <text class="label" x="160" y="236">left hand</text>
+
+      <!-- feet: bumpers at the toes -->
+      <rect class="sensor" data-sensor="RFoot/Bumper/Right" x="80" y="284" width="18" height="16" rx="5"/>
+      <rect class="sensor" data-sensor="RFoot/Bumper/Left" x="100" y="284" width="18" height="16" rx="5"/>
+      <rect class="sensor" data-sensor="LFoot/Bumper/Right" x="122" y="284" width="18" height="16" rx="5"/>
+      <rect class="sensor" data-sensor="LFoot/Bumper/Left" x="142" y="284" width="18" height="16" rx="5"/>
+      <text class="label" x="82" y="316">right foot</text>
+      <text class="label" x="124" y="316">left foot</text>
+    </svg>
+    <p class="hint">Click: a tap (0.2 s). Shift-click: hold until clicked again, so several are held at once.</p>
+    <div class="row">
+      <button id="head">Head (three sensors)</button>
+      <button id="release">Release all</button>
+    </div>
+    <div class="row">
+      <button id="holdfor">Tap the held sensors for</button>
+      <input id="seconds" type="number" min="0" max="60" step="0.1" value="3.5"> s
+    </div>
+    <div id="pressed"></div>
+  </section>
+  <div class="side">
+    <section>
+      <h2>Cameras</h2>
+      <label class="switch"><input type="checkbox" data-camera="top"> Top camera covered</label>
+      <label class="switch"><input type="checkbox" data-camera="bottom"> Bottom camera covered</label>
+      <p class="hint" id="camerahint"></p>
+    </section>
+    <section>
+      <h2>Gestures</h2>
+      <div class="row"><button class="primary" id="stop">Stop the activity</button></div>
+      <p class="hint" id="gesturehint"></p>
+    </section>
+  </div>
+</main>
+<script>
+"use strict";
+const statusEl = document.getElementById("status");
+let state = null;
+
+async function call(path, body) {
+  const res = await fetch(path, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {}),
+  });
+  const answer = await res.json();
+  if (!res.ok) throw new Error(answer.error || res.statusText);
+  render(answer);
+  return answer;
+}
+
+function report(promise) {
+  promise.catch(e => { statusEl.textContent = e.message; statusEl.className = "error"; });
+}
+
+function render(s) {
+  state = s;
+  statusEl.className = "";
+  statusEl.textContent = "NAOqi " + s.naoqi_version;
+  const pressed = new Set(s.touch.pressed), held = new Set(s.touch.held);
+  for (const el of document.querySelectorAll(".sensor")) {
+    el.classList.toggle("pressed", pressed.has(el.dataset.sensor));
+    el.classList.toggle("held", held.has(el.dataset.sensor));
+  }
+  document.getElementById("pressed").textContent =
+    s.touch.pressed.length ? "Pressed: " + s.touch.pressed.join(", ") : "Nothing pressed";
+  for (const box of document.querySelectorAll("[data-camera]")) {
+    const cam = s.cameras[box.dataset.camera];
+    box.checked = cam.covered;
+    box.disabled = !cam.fed;
+  }
+  document.getElementById("camerahint").textContent =
+    Object.values(s.cameras).some(c => !c.fed) ? "A camera with no source cannot be covered." : "";
+  document.getElementById("gesturehint").textContent = s.naoqi_version.startsWith("2.1")
+    ? "2.1: the three head sensors held 3.5 s."
+    : "2.8: the top camera covered, the front sensor held 2 s, then uncovered.";
+}
+
+async function poll() {
+  try {
+    const res = await fetch("/api/state", {cache: "no-store"});
+    render(await res.json());
+  } catch (e) {
+    statusEl.textContent = "not connected: is the sim running?"; statusEl.className = "error";
+  }
+  setTimeout(poll, 300);
+}
+
+for (const el of document.querySelectorAll(".sensor")) {
+  const t = document.createElementNS("http://www.w3.org/2000/svg", "title");
+  t.textContent = el.dataset.sensor;
+  el.appendChild(t);
+  el.addEventListener("click", ev => {
+    const sensor = el.dataset.sensor;
+    if (ev.shiftKey) {
+      const held = state && state.touch.held.includes(sensor);
+      report(call(held ? "/api/touch/release" : "/api/touch/press", {sensors: [sensor]}));
+    } else {
+      report(call("/api/touch/tap", {sensors: [sensor], duration_s: 0.2}));
+    }
+  });
+}
+document.getElementById("head").addEventListener("click", () => {
+  const heads = ["Head/Touch/Front", "Head/Touch/Middle", "Head/Touch/Rear"];
+  const all = state && heads.every(h => state.touch.held.includes(h));
+  report(call(all ? "/api/touch/release" : "/api/touch/press", {sensors: ["Head"]}));
+});
+document.getElementById("release").addEventListener("click", () => report(call("/api/touch/release", {})));
+document.getElementById("holdfor").addEventListener("click", async () => {
+  const sensors = state ? state.touch.held : [];
+  if (!sensors.length) { statusEl.textContent = "Shift-click the sensors to hold first"; return; }
+  const seconds = Number(document.getElementById("seconds").value);
+  // the held sensors are let go, then pressed for the time asked
+  await call("/api/touch/release", {sensors}).catch(() => {});
+  report(call("/api/touch/tap", {sensors, duration_s: seconds}));
+});
+for (const box of document.querySelectorAll("[data-camera]")) {
+  box.addEventListener("change", () =>
+    report(call("/api/cameras/" + box.dataset.camera, {covered: box.checked})));
+}
+document.getElementById("stop").addEventListener("click", async ev => {
+  ev.target.disabled = true;
+  try { await call("/api/gestures/stop-activity"); }
+  catch (e) { statusEl.textContent = e.message; statusEl.className = "error"; }
+  finally { ev.target.disabled = false; }
+});
+poll();
+</script>
+</body>
+</html>

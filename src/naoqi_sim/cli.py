@@ -137,6 +137,8 @@ async def _run(sim: NaoqiSim) -> int:
             f"{label}: NAOqi {status.naoqi_version} ready at {sim.url} (Ctrl-C to stop)",
             flush=True,
         )
+        if sim.controls_url is not None:
+            print(f"{label}: controls at {sim.controls_url}", flush=True)
         await stop.wait()
         await sim.stop()
         return 0

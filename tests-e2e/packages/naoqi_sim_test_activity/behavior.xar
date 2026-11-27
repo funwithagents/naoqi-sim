@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ChoregrapheProject xmlns="http://www.aldebaran-robotics.com/schema/choregraphe/project.xsd" xar_version="3">
+    <Box name="root" id="-1" localization="8" tooltip="Raises NaoqiSimTest/ActivityStarted and runs until stopped." x="0" y="0">
+        <bitmap>media/images/box/root.png</bitmap>
+        <script language="4">
+            <content>
+                <![CDATA[]]>
+            </content>
+        </script>
+        <Input name="onLoad" type="1" type_size="1" nature="0" inner="1" tooltip="" id="1" />
+        <Input name="onStart" type="1" type_size="1" nature="2" inner="0" tooltip="" id="2" />
+        <Input name="onStop" type="1" type_size="1" nature="3" inner="0" tooltip="" id="3" />
+        <Output name="onStopped" type="1" type_size="1" nature="1" inner="0" tooltip="" id="4" />
+        <Timeline enable="0">
+            <BehaviorLayer name="behavior_layer1">
+                <BehaviorKeyframe name="keyframe1" index="1">
+                    <Diagram>
+                        <Box name="Started" id="1" localization="8" tooltip="" x="200" y="100">
+                            <bitmap>media/images/box/box-python-script.png</bitmap>
+                            <script language="4">
+                                <content>
+                                    <![CDATA[import time
+
+
+class MyClass(GeneratedClass):
+    def __init__(self):
+        GeneratedClass.__init__(self)
+
+    def onLoad(self):
+        self.running = False
+
+    def onUnload(self):
+        self.running = False
+
+    def onInput_onStart(self):
+        self.running = True
+        ALProxy("ALMemory").raiseEvent("NaoqiSimTest/ActivityStarted", 1)
+        while self.running:  # keeps the focus until Life (or the test) stops it
+            time.sleep(0.1)
+
+    def onInput_onStop(self):
+        self.running = False
+        ALProxy("ALMemory").raiseEvent("NaoqiSimTest/ActivityStopped", 1)
+        self.onStopped()]]>
+                                </content>
+                            </script>
+                            <Input name="onLoad" type="1" type_size="1" nature="0" inner="1" tooltip="" id="1" />
+                            <Input name="onStart" type="1" type_size="1" nature="2" inner="0" tooltip="" id="2" />
+                            <Input name="onStop" type="1" type_size="1" nature="3" inner="0" tooltip="" id="3" />
+                            <Output name="onStopped" type="1" type_size="1" nature="1" inner="0" tooltip="" id="4" />
+                        </Box>
+                        <Link inputowner="1" indexofinput="2" outputowner="0" indexofoutput="2" />
+                        <Link inputowner="1" indexofinput="3" outputowner="0" indexofoutput="3" />
+                        <Link inputowner="0" indexofinput="4" outputowner="1" indexofoutput="4" />
+                    </Diagram>
+                </BehaviorKeyframe>
+            </BehaviorLayer>
+        </Timeline>
+    </Box>
+</ChoregrapheProject>

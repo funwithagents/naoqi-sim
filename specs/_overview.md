@@ -59,7 +59,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Host link | Built and tested, with the audio input ([devices.md](host/devices.md)) |
 | Audio input, `ALAudioDevice` replacement | Built and tested on both versions: `ALAudioDevice` with its native relay, the fake source tests play into, the host microphone, the robot hearing its own voice; on CI over a virtual audio loopback ([audio-input.md](host/audio-input.md), [audio-device.md](services/audio-device.md)) |
 | Video input | Built and tested with the render source on both versions: VGA frames of both head cameras at `video_input.fps`, NAOqi converting per subscriber; the webcam source on either camera, behind the `webcam` extra ([video-input.md](host/video-input.md)) |
-| Touch input | Draft ([touch-input.md](host/touch-input.md)) |
+| Touch input, controls page | Built: the 13 sensors written to ALMemory for `ALTouch`, `sim.touch`, the camera cover, each version's gesture that stops an activity (with `_ALBrightnessStatistics` on 2.8), the controls page and its HTTP API ([touch-input.md](host/touch-input.md), [controls.md](host/controls.md), [brightness-statistics.md](services/brightness-statistics.md)) |
 | `ALAudioPlayer` replacement | Built and tested on both versions: a NAO's API, WAV/OGG through the suite's libsndfile, mixed with speech, a C++ front for `stop(id)` ([audio-player.md](services/audio-player.md)) |
 | Simulated world (naoqi-viewer sim mode) | Built and tested: the window, and the headless viewer rendering both head cameras for the video input, in the live tier and CI ([viewer.md](host/viewer.md)) |
 | Props (`sim.props`: faces and objects in the scene) | Built and tested on both versions: faces and objects spawned in the scene's or the robot's frame, the live tier's red ball ([props.md](host/props.md)) |
@@ -119,7 +119,7 @@ Specified in [devices.md](host/devices.md): the simulated robot's inputs and out
 | Audio output (loudspeaker, WAV, memory) | [audio-output.md](host/audio-output.md) | Its own TCP protocol on 9562, fed by the `tts` engine and later `ALAudioPlayer` |
 | Audio input (fake source driven from code, host microphone); the robot hears itself | [audio-input.md](host/audio-input.md) | The host link, into the `ALAudioDevice` replacement |
 | Video input (naoqi-viewer render, webcam) | [video-input.md](host/video-input.md) | qi: `ALVideoDevice.putImage` |
-| Touch input (clicks in the sim window, the API in tests) | [touch-input.md](host/touch-input.md) | qi: ALMemory |
+| Touch input (the API in tests, the controls page for a person; clicks in the sim window later) | [touch-input.md](host/touch-input.md), [controls.md](host/controls.md) | qi: ALMemory |
 
 - The host knows nothing about NAOqi: no tags, no events, no `say()` semantics. Where it needs NAOqi (video injection, touch, the viewer reading joint state), it is an ordinary qi client.
 - The **host link** carries only what qi cannot: microphone PCM into the container and the `ALAudioDevice` subscriptions out, on one port the containers connect out to, with the toolkit's framing ([devices.md](host/devices.md), "The host link").
