@@ -1,0 +1,5 @@
+topic: ~naoqi_sim_test()
+language: enu
+u:(hello robot) hello human
+u:(what time is it) it is time to test
+u:(the weather is nice today) let's go ^switchFocus(naoqi_sim_test_app/.)

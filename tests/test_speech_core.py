@@ -164,7 +164,7 @@ def test_say_sends_the_parsed_items_rate_and_language():
             "language": "French",
         }
     ]
-    assert ("languageTTS", "French") in sp.signals
+    assert ("languageTTS", "fr_FR") in sp.signals
 
 
 def test_stop_all_mid_sentence():
@@ -319,7 +319,7 @@ def test_set_language_refuses_a_language_that_is_not_installed():
         sp.set_language("Klingon")
     assert sp.language == "French"
     # No languageTTS for the refused one
-    assert sp.signals == [("languageTTS", "French")]
+    assert sp.signals == [("languageTTS", "fr_FR")]
     sp.say("bonjour", 1)
     assert sp.engine_calls[-1]["language"] == "French"
 

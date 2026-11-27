@@ -1,0 +1,16 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<package uuid="naoqi_sim_test_launcher" version="1.0.0">
+  <names><name lang="en_US">naoqi-sim test launcher</name></names>
+  <descriptions><description lang="en_US">For naoqi-sim's 2.1 live tests only: an interactive activity that starts the main dialog when the tracked person is in zone 1, as the launcher a NAO 2.1 user installs does.</description></descriptions>
+  <supportedLanguages><language>en_US</language><language>fr_FR</language></supportedLanguages>
+  <descriptionLanguages><language>en_US</language></descriptionLanguages>
+  <contents>
+    <behaviorContent path=".">
+      <nature>interactive</nature>
+      <autonomous>
+        <condition purpose="launchTrigger"><![CDATA[('Launchpad/ZoneOfTrackedHuman' == 1) && ('UserSession/FocusedUser' >= 0)]]></condition>
+      </autonomous>
+      <permissions><canRunOnPod/></permissions>
+    </behaviorContent>
+  </contents>
+</package>

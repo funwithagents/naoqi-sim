@@ -4,17 +4,16 @@ script's vocabulary and for a dialog topic loaded by hand, on both versions."""
 
 import threading
 import time
-import wave
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 import pytest
+from support import recorded_sentences, say_to_the_robot
 
 SUBSCRIBER = "test_speech_recognition_live"
 STATUS = "ALSpeechRecognition/Status"
-SPEECH = Path(__file__).parent / "speech"
 # The methods a dialog calls on the module, hidden ones included (measured with a recording
 # module): a missing one stops the dialog without a word, so each must be there.
 DIALOG_CALLS = {
@@ -154,26 +153,9 @@ class Events:
         return [v for v in self.since(mark, "WordRecognized") if v[0]]
 
 
-def _read(path: Path) -> np.ndarray:
-    """A sentence's 16 kHz mono WAV, with 0.3 s of silence on each side."""
-    with wave.open(str(path)) as w:
-        assert (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (
-            16000,
-            1,
-            2,
-        ), path
-        pcm = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
-    silence = np.zeros(4800, np.int16)
-    return np.concatenate([silence, pcm, silence])
-
-
 @pytest.fixture(scope="session")
 def sentences() -> dict[str, np.ndarray]:
-    """The test sentences, by text: `english-hello_robot.wav` is "hello robot"."""
-    return {
-        p.stem.split("-", 1)[1].replace("_", " "): _read(p)
-        for p in sorted(SPEECH.glob("*.wav"))
-    }
+    return recorded_sentences()
 
 
 @pytest.fixture
@@ -189,12 +171,6 @@ def asr(nao):
 @pytest.fixture
 def events(nao) -> Events:
     return Events(nao.service("ALMemory"))
-
-
-def say_to_the_robot(nao, sentences, text: str) -> None:
-    """Plays a sentence into the fake room and waits for its end."""
-    nao.audio.play(sentences[text], 16000)
-    time.sleep(len(sentences[text]) / 16000)
 
 
 @contextmanager

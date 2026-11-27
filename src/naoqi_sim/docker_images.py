@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from naoqi_sim import files, suite
-from naoqi_sim.config import SpeechSettings
+from naoqi_sim.config import RobotSettings
 from naoqi_sim.errors import (
     BootError,
     DockerUnavailableError,
@@ -442,7 +442,9 @@ def _verify(images: Images, env: dict[str, str]) -> None:
                 f"docker compose up failed for NAOqi {images.version}:\n{res.stderr[-3000:]}"
             )
         wait_healthy(images)
-        wait_tts(images, SpeechSettings().languages)  # the image has their voices
+        wait_tts(
+            images, RobotSettings().available_languages
+        )  # the image has their voices
         wait_perception(images)
         wait_asr(images)
     finally:

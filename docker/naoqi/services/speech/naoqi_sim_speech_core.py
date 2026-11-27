@@ -307,7 +307,9 @@ class Speaker(object):
     def set_language(self, lang):
         check_language("setLanguage", lang)  # the language and languageTTS stay as they were
         self.language = lang
-        self.signal("languageTTS", lang)
+        # the locale, not the name: 2.8's Autonomous Life follows this signal and refuses every
+        # application for its language when given a name (measured, Nov 25, 2026)
+        self.signal("languageTTS", self.locale())
 
     def locale(self):
         """The current language's locale (`en_US`), as a NAO's locale()."""

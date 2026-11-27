@@ -15,12 +15,13 @@ tests:
   - tests-e2e/test_boot_live.py
   - tests-e2e/test_life_live.py
   - tests-e2e/test_robot_state_live.py
+  - tests-e2e/test_life_scenario_live.py
   - tests/test_config.py
 ---
 
 # Autonomous Life and the main dialog
 
-**Status:** Draft
+**Status:** Stable
 
 Decisions of Nov 25, 2026, on the surveys of Nov 20 and 21 (trail in `spike/RESULTS.md`, from "Life and the dialog on 2.8" on; a real NAO 2.1 measured Nov 21). The boot state and the whole chain were measured on both sims on Nov 25, 2026; the open questions are deferrals. Built so far (Nov 25, 2026): the boot state on both versions, 2.1's `setState`, and a NAO's Life configuration on 2.8; the rest has no plan yet.
 
@@ -84,7 +85,7 @@ The two versions do it differently on a robot, and so do the sims.
 | What takes Life to `interactive` | An activity of nature `interactive` taking the focus: by `switchFocus`, or when its launch condition holds | A rule of Life's configuration: `Launchpad/NumPeopleZone1 > 0` for 0.25 s; or an interactive activity taking the focus |
 | What starts the main dialog | The focused activity's behavior, calling `ALDialog._preloadMain()` then `_runMain()` | Life itself: `ALDialog._startDialog("FullyEngaged")` when it enters `interactive` with no activity |
 | On a robot | `run_dialog_dev`, from the store, launch condition `('Launchpad/ZoneOfTrackedHuman' == 1) && ('UserSession/FocusedUser' >= 0)` | The `life` package's NAO configuration |
-| Back to `solitary` | The user session manager asks the activity to stop when nobody is tracked | After 10 s `interactive`, nobody tracked or the tracked human beyond zone 2 for 20 s, no activity and no dialog input for 10 s |
+| Back to `solitary` | When nobody is tracked, the user session raises `UserSession/ShouldExitInteractiveActivity`; the activity stops the main dialog (`_stopMain()`) and ends | After 10 s `interactive`, nobody tracked or the tracked human beyond zone 2 for 20 s, no activity and no dialog input for 10 s |
 
 **naoqi-sim ships no launcher application on either version** (user, Nov 25, 2026).
 
@@ -105,7 +106,11 @@ As on a robot out of the box: the dialog content (`dialog_lexicon`, `dialog_appl
 
 ### Tests
 
-- **Fixtures, written by us and committed** (no Aldebaran package can be: [container.md](container.md), "Image data and licensing"): a small dialog package (one topic, English and French, a few rules), the same for both versions; a small application of our own with a trigger sentence, to launch by voice; and for 2.1 a minimal interactive activity with the robot launcher's condition, calling `_preloadMain()` and `_runMain()`, installed by the test only.
+- **Fixtures, written by us and committed** (no Aldebaran package can be: [container.md](container.md), "Image data and licensing"), in `tests-e2e/packages/`, zipped into `.pkg` files and installed by the test only:
+  - `naoqi_sim_test_dialog`: one topic, English and French, a few rules on the recorded test sentences (`hello robot` is answered `hello human`, `je veux une pomme` `tu veux une pomme`), the same for both versions; one rule, `u:(the weather is nice today) let's go ^switchFocus(naoqi_sim_test_app/.)`, starts our application by voice;
+  - `naoqi_sim_test_app`: an interactive application of one box, which raises `NaoqiSimTest/AppStarted` and ends;
+  - `naoqi_sim_test_launcher`, for 2.1: an interactive activity with the robot launcher's condition (`('Launchpad/ZoneOfTrackedHuman' == 1) && ('UserSession/FocusedUser' >= 0)`), one Python box calling `_preloadMain()` and `_runMain()`, which stops the main dialog and ends when `UserSession/ShouldExitInteractiveActivity` is raised or the activity is stopped.
+- **An application launched by voice through its manifest's trigger sentences is not tested.** On a robot those sentences reach the recognition through the dialog's application launcher, a dialog package of the robot's (`dialog_applauncher`); the scenario starts our application from a rule of our own topic instead (open question 8). The robot's way was measured by hand with a NAO 6's packages, Nov 25, 2026 ("Open questions").
 - **Live tier, both versions, one scenario**, the viewer headless, perception and speech recognition on, the sentences played into the fake room:
 
 | Step | Expected |
@@ -115,9 +120,12 @@ As on a robot out of the box: the dialog content (`dialog_lexicon`, `dialog_appl
 | A face prop at 2 m | Tracked, zone 2, Life stays `solitary` |
 | The face moves to 1 m | Zone 1, Life `interactive`, the main dialog started with our topic |
 | A sentence of our topic | Recognised and answered |
+| Another starts our application | Life focuses it, it raises its key |
 | The face is removed | Life back to `solitary`, the dialog stopped |
 | `setState("disabled")` | At rest again |
 
+- **Built** (Nov 25, 2026): `tests-e2e/test_life_scenario_live.py`, on both versions, after `setState("solitary")` (the boot state is checked by `test_boot_live.py`); again in French, without the application, on a sim booted with `robot.language` French.
+- **Known issue, 2.1: after an animation, `setState("disabled")` sometimes leaves the robot where it stood.** Measured Nov 26, 2026, 4 runs in 12 of the scenario with the application: Life `disabled`, `robotIsWakeUp()` false and the stiffness 0, as always, but the posture unchanged (`StandInit`, `StandZero`) instead of `Crouch`. The cause is the posture family ([naoqi-fidelity.md](naoqi-fidelity.md), "the posture family sometimes reads a standing robot as lying"): an animation (here the dialog's "let's go") can leave the family on `LyingBack` or `LyingBelly`, and Life then takes the stiffness off without crouching (0.1 s, against 5.3 s to Crouch from `Standing`). No fall is detected. The scenario checks the rest (not awake, stiffness off), not the posture.
 - The live tests that move joints wake the robot first.
 
 ## Specs this changes when it is built
@@ -143,3 +151,4 @@ Deferred:
 5. The double-tap trigger on 2.8.
 6. A NAO 6's behaviour is judged from its public image: none at hand.
 7. What a NAO does at boot with Life off (posture, stiffness): never watched, it takes a reboot of the real robot.
+8. **An application launched by its manifest's trigger sentences in the live tier**: needs a launcher topic of our own that gives the dialog the installed applications' trigger sentences. The scenario starts our application from a rule of its topic.

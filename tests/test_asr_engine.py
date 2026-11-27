@@ -12,6 +12,8 @@ from typing import Any
 
 import pytest
 
+from naoqi_sim.config import LANGUAGES
+
 _ENGINE = Path(__file__).resolve().parent.parent / "docker" / "asr-engine"
 
 
@@ -92,6 +94,11 @@ WORDS = [
 def _session(script, phrases=("hello robot", "what time is it"), spotting=False):
     model = FakeModel(WORDS, script)
     return server.Session(model, list(phrases), spotting), model
+
+
+def test_each_language_pack_has_a_recognition_model():
+    """The config's languages are the ones with a voice and a model: the engine has the models."""
+    assert tuple(server.MODELS) == LANGUAGES
 
 
 def test_phrases_are_normalised_and_those_with_unknown_words_dropped():

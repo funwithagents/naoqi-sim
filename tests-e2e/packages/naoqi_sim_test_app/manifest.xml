@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<package uuid="naoqi_sim_test_app" version="1.0.0">
+  <names><name lang="en_US">naoqi-sim test application</name></names>
+  <descriptions><description lang="en_US">For naoqi-sim's live tests only: an application the test dialog topic starts by voice; it raises NaoqiSimTest/AppStarted and ends.</description></descriptions>
+  <supportedLanguages><language>en_US</language><language>fr_FR</language></supportedLanguages>
+  <descriptionLanguages><language>en_US</language></descriptionLanguages>
+  <contents>
+    <behaviorContent path=".">
+      <nature>interactive</nature>
+      <permissions><canRunOnPod/></permissions>
+    </behaviorContent>
+  </contents>
+</package>

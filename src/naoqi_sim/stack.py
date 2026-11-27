@@ -77,13 +77,22 @@ def services(config: NaoqiSimConfig) -> list[str]:
     return [*engines, IMAGES[config.naoqi.version].service]
 
 
+def languages(config: NaoqiSimConfig) -> list[str]:
+    """The robot's available languages, its language at boot first."""
+    robot = config.robot
+    return [robot.language] + [
+        name for name in robot.available_languages if name != robot.language
+    ]
+
+
 def compose_env(config: NaoqiSimConfig) -> dict[str, str]:
     """The environment every compose call of a run gets, from the config: the installed
     languages, the robot's state at boot, and the perception and speech recognition engines' URLs, each empty when its
     engine is off so the NAOqi modules reach none (compose keeps an empty value as is)."""
     return {
         **files.compose_env(),
-        "NAOQI_SIM_LANGUAGES": ",".join(config.speech.languages),
+        # The robot's language packs, its language at boot first (the containers read it there)
+        "NAOQI_SIM_LANGUAGES": ",".join(languages(config)),
         # The robot's state when the sim is ready, which the NAOqi entrypoint brings it to.
         "NAOQI_SIM_ROBOT_POSTURE": config.robot.posture,
         "NAOQI_SIM_ROBOT_STIFFNESS": "on" if config.robot.stiffness_on else "off",
@@ -127,7 +136,7 @@ def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> 
     )
     docker_images.wait_tts(
         images,
-        config.speech.languages,
+        languages(config),
         timeout=config.naoqi.ready_timeout_s,
         abort=abort,
     )

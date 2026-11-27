@@ -2,10 +2,13 @@ import json
 import re
 from dataclasses import fields
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from naoqi_sim.config import (
+    LANGUAGES,
+    SPEECH_LANGUAGES,
     AudioInputSettings,
     AudioOutputSettings,
     CameraSettings,
@@ -15,7 +18,6 @@ from naoqi_sim.config import (
     PerceptionSettings,
     RobotSettings,
     SpeechRecognitionSettings,
-    SpeechSettings,
     VideoInputSettings,
     ViewerSettings,
 )
@@ -34,7 +36,8 @@ def test_an_empty_config_is_the_defaults():
 
     assert config == NaoqiSimConfig()
     assert config.naoqi.version == "2.1" and config.naoqi.ready_timeout_s == 240.0
-    assert config.speech.languages == ("English", "French")
+    assert config.robot.available_languages == ("English", "French")
+    assert config.robot.language == "English"
     # a NAO whose Life does not start at boot, at rest
     assert config.robot == RobotSettings(
         posture="crouch", stiffness_on=False, life_on=False
@@ -63,7 +66,10 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
     config = NaoqiSimConfig.from_dict(
         {
             "naoqi": {"version": "2.8", "ready_timeout_s": 60},
-            "speech": {"languages": ["German", "English"]},
+            "robot": {
+                "available_languages": ["French", "English"],
+                "language": "French",
+            },
             "audio_output": {"mode": "record", "record": str(tmp_path / "out.wav")},
             "audio_input": {"source": "fake", "mono": "silence"},
             "video_input": {
@@ -88,12 +94,22 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
         ({"naoqi": {"version": 2.1}}, "naoqi.version"),
         ({"naoqi": {"ready_timeout_s": 0}}, "naoqi.ready_timeout_s"),
         ({"naoqi": {"ready_timeout_s": True}}, "naoqi.ready_timeout_s"),
-        ({"speech": {"languages": []}}, "speech.languages"),
-        ({"speech": {"languages": "English"}}, "speech.languages"),
-        ({"speech": {"languages": ["English", 2]}}, "speech.languages"),
-        ({"speech": {"languages": ["English", "Klingon"]}}, "speech.languages"),
-        ({"speech": {"languages": ["Japanese"]}}, "speech.languages"),  # no voice
-        ({"speech": {"languages": ["French", "French"]}}, "speech.languages"),
+        ({"robot": {"available_languages": []}}, "robot.available_languages"),
+        ({"robot": {"available_languages": "English"}}, "robot.available_languages"),
+        (
+            {"robot": {"available_languages": ["English", 2]}},
+            "robot.available_languages",
+        ),
+        (
+            {"robot": {"available_languages": ["English", "Klingon"]}},
+            "robot.available_languages",
+        ),
+        (
+            {"robot": {"available_languages": ["English", "French", "French"]}},
+            "robot.available_languages",
+        ),
+        ({"robot": {"language": "German"}}, "robot.language"),
+        ({"speech": {"languages": ["English"]}}, None),  # the block is gone
         ({"audio_output": {"mode": "loud"}}, "audio_output.mode"),
         ({"audio_input": {"mono": "left"}}, "audio_input.mono"),
         ({"video_input": {"top": {"device": -1}}}, "video_input.top.device"),
@@ -241,7 +257,8 @@ def test_the_example_files_load():
     assert ci.audio_output.mode == "silent"
     assert ci.audio_input.source == "fake"
     languages = NaoqiSimConfig.from_json_file(EXAMPLES / "languages.json")
-    assert languages.speech.languages == ("English", "French", "German")
+    assert languages.robot.available_languages == ("English", "French")
+    assert languages.robot.language == "French"
     life = NaoqiSimConfig.from_json_file(EXAMPLES / "life.json")
     assert life == NaoqiSimConfig(
         robot=RobotSettings(posture="stand", stiffness_on=True, life_on=True)
@@ -258,14 +275,30 @@ def test_the_example_files_load():
     )
 
 
-def test_the_installed_languages_keep_their_order_and_name_the_voiceless_ones():
-    config = NaoqiSimConfig.from_dict({"speech": {"languages": ["German", "English"]}})
-    assert config.speech.languages == ("German", "English")
-    assert config.to_dict()["speech"] == {"languages": ["German", "English"]}
-    assert SpeechSettings(languages=["French"]).languages == ("French",)  # type: ignore[arg-type]
+def test_a_language_is_available_only_with_its_language_pack():
+    """A voice and a recognition model, as a NAO's language pack installs them; a language with
+    a voice only (German) is refused, naming the languages that have one."""
+    config = NaoqiSimConfig.from_dict(
+        {"robot": {"available_languages": ["French"], "language": "French"}}
+    )
+    assert config.robot.available_languages == ("French",)
+    assert config.to_dict()["robot"]["available_languages"] == ["French"]
+    in_code: Any = ["French"]  # a list in code is kept as a tuple
+    robot = RobotSettings(available_languages=in_code, language="French")
+    assert robot.available_languages == ("French",)
+    error = error_for({"robot": {"available_languages": ["English", "German"]}})
+    assert "'German' has no language pack" in str(error) and "English, French" in str(
+        error
+    )
+    assert LANGUAGES == ("English", "French")
+    assert set(LANGUAGES) <= set(SPEECH_LANGUAGES)  # each has a voice
 
-    error = error_for({"speech": {"languages": ["Japanese"]}})
-    assert "'Japanese' has no voice" in str(error) and "Czech" in str(error)
+
+def test_the_language_at_boot_must_be_available():
+    error = error_for(
+        {"robot": {"available_languages": ["English"], "language": "French"}}
+    )
+    assert error.key == "robot.language" and "'French' is not one of" in error.message
 
 
 def test_the_speech_recognition_engine_is_on_unless_the_config_turns_it_off():

@@ -10,6 +10,7 @@ from naoqi_sim.audio_output import (
     WavSink,
 )
 from naoqi_sim.config import (
+    LANGUAGES,
     SPEECH_LANGUAGES,
     AudioInputSettings,
     AudioInputSource,
@@ -24,7 +25,6 @@ from naoqi_sim.config import (
     RobotPosture,
     RobotSettings,
     SpeechRecognitionSettings,
-    SpeechSettings,
     VideoInputSettings,
     VideoInputSource,
     ViewerSettings,
@@ -55,6 +55,7 @@ from naoqi_sim.stack import (
 )
 
 __all__ = [
+    "LANGUAGES",
     "SPEECH_LANGUAGES",
     "AudioInputSettings",
     "AudioInputSource",
@@ -90,7 +91,6 @@ __all__ = [
     "RobotPosture",
     "RobotSettings",
     "SpeechRecognitionSettings",
-    "SpeechSettings",
     "StackStatus",
     "Take",
     "VideoInputSettings",
