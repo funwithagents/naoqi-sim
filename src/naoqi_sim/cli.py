@@ -125,7 +125,9 @@ def _config(ap: argparse.ArgumentParser, a: argparse.Namespace) -> NaoqiSimConfi
 
 
 def _parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="naoqi-sim", description="A simulated NAOqi robot on your computer.")
+    ap = argparse.ArgumentParser(
+        prog="naoqi-sim", description="A simulated NAOqi robot on your computer."
+    )
     ap.add_argument("--verbose", action="store_true", help="debug logging")
     commands = ap.add_subparsers(dest="command", required=True)
     build = commands.add_parser(
