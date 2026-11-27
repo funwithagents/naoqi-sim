@@ -446,6 +446,33 @@ def test_a_covered_camera_sees_a_hand_until_uncovered_and_the_other_its_source(n
     assert device.covered() == {"top": False, "bottom": False}
 
 
+def test_a_covered_camera_is_dark_even_while_its_source_has_no_frame(naoqi):
+    """A stalled webcam (no frame lately: NoFrame) behind a hand: the hand's dark frame still
+    reaches NAOqi, as a real hand darkens a camera whatever it delivers; uncovered, nothing does."""
+
+    class Stalled:
+        name = "webcam"
+
+        def frame(self):
+            raise NoFrame("webcam 0 has no frame")
+
+    device = VideoInput({"top": Stalled()}, {"top": 20}, connect=lambda: naoqi)
+    device.start()
+    try:
+        time.sleep(0.2)
+        assert puts_into(naoqi, 0) == []  # no frame, nothing put
+        device.cover("top")
+        wait_until(lambda: len(puts_into(naoqi, 0)) >= 3)
+        assert (_frame(naoqi.puts[-1]) == video_input.COVERED).all()
+        device.cover("top", False)
+        time.sleep(0.1)  # a slot already under way may still put one
+        count = len(naoqi.puts)
+        time.sleep(0.2)
+        assert len(naoqi.puts) == count  # uncovered: a stalled source again
+    finally:
+        device.stop()
+
+
 def test_only_a_fed_camera_can_be_covered(naoqi):
     device = VideoInput(Frames().sources("top"), {"top": 10}, connect=lambda: naoqi)
     with pytest.raises(

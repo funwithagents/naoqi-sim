@@ -203,7 +203,11 @@ class VideoInput:
                         COVERED if camera in self._covered else image
                     )
                 except NoFrame:
-                    self.missed_by_camera[camera] += 1
+                    if camera in self._covered:
+                        # a hand over the lens is dark whether or not the source delivers
+                        images[CAMERAS[camera]] = COVERED
+                    else:
+                        self.missed_by_camera[camera] += 1
                 except WorldClosed:
                     if self._stopping.is_set():
                         return
