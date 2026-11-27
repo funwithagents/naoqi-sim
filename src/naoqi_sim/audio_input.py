@@ -113,10 +113,13 @@ class AudioSource(Protocol):
     name: str
 
     def open(self) -> None:
-        """Something is needed: start producing."""
+        """The device starts: open for the whole run (a NAO's microphones are always on)."""
 
     def close(self) -> None:
-        """Nothing is needed any more."""
+        """The device stops."""
+
+    def skip(self) -> None:
+        """The container side needs audio again: drop what came while nothing was read."""
 
     def read(self, start: float, frames: int) -> np.ndarray:
         """`frames` base samples, (frames, 4) float, starting at `start` (time.monotonic())."""
@@ -268,6 +271,9 @@ class FakeAudioSource:
     def close(self) -> None:
         pass
 
+    def skip(self) -> None:
+        pass  # takes play on the clock, not from a backlog
+
     def read(self, start: float, frames: int) -> np.ndarray:
         out = np.zeros((frames, 4))
         end = start + frames / BASE_RATE
@@ -351,6 +357,9 @@ class MicSource:
             stream.stop()
             stream.close()
             log.info("audio input: the microphone is off")
+        self.skip()
+
+    def skip(self) -> None:
         with self._lock:
             self._blocks.clear()
             self._pending = b""
@@ -447,6 +456,9 @@ class AudioInput:
         self._session = self._connect()
         self._memory = self._session.service("ALMemory")
         self._publish(self.source.name, self._mono)
+        # Open for the whole run, as a NAO's microphones are, whatever NAOqi asks for: the
+        # producer follows the need, the source does not (specs/host/audio-input.md).
+        self.source.open()
         with self._lock:
             self._started = True
             self._update()
@@ -456,6 +468,7 @@ class AudioInput:
         with self._lock:
             self._started = False
             self._update()
+        self.source.close()
         if isinstance(self.source, FakeAudioSource):
             self.source.stop()
         if self._session is not None:
@@ -503,7 +516,7 @@ class AudioInput:
         running = self._producer is not None
         if self._needed() and not running:
             self._halt = threading.Event()
-            self.source.open()
+            self.source.skip()  # what was captured while nobody listened is not sent
             self._producer = threading.Thread(
                 target=self._produce,
                 args=(self._halt,),
@@ -516,7 +529,6 @@ class AudioInput:
             producer, self._producer = self._producer, None
             if producer is not None and producer is not threading.current_thread():
                 producer.join(timeout=JOIN_TIMEOUT_S)
-            self.source.close()
 
     def _produce(self, halt: threading.Event) -> None:
         streams: dict[Format, _Stream] = {}
