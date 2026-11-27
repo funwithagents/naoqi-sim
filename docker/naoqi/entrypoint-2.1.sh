@@ -12,9 +12,9 @@
 
 LEFT_OUT="audioout peopleperception sittingpeopledetection engagementzones gazeanalysis wavingdetection" # ALTextToSpeech's and ALAudioPlayer's library; ALPeoplePerception's and the four modules chained to its graph (specs/services/perception-stubs.md)
 OURS="naoqi_sim_audio_device_relay,naoqi_sim_loader,naoqi_sim_speech_front,naoqi_sim_audio_player_front"
-MODULES="naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule naoqi_sim_speech_recognition_almodule naoqi_sim_face_detection_almodule naoqi_sim_people_perception_almodule naoqi_sim_engagement_zones_almodule naoqi_sim_perception_stubs_almodule" # ours, loaded by the loader in order
+MODULES="naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule naoqi_sim_speech_recognition_almodule naoqi_sim_face_detection_almodule naoqi_sim_people_perception_almodule naoqi_sim_engagement_zones_almodule naoqi_sim_launchpad_people_almodule naoqi_sim_perception_stubs_almodule" # ours, loaded by the loader in order
 REPLACED="ALTextToSpeech ALAudioPlayer ALPeoplePerception" # the built-in names our modules take
-ADDED="ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer ALSpeechRecognition ALFaceDetection ALEngagementZones ALGazeAnalysis ALSittingPeopleDetection" # names no built-in holds, which we register (the last three: stubs)
+ADDED="ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer ALSpeechRecognition ALFaceDetection ALEngagementZones ALGazeAnalysis ALSittingPeopleDetection _NaoqiSimLaunchpadPeople" # names no built-in holds, which we register (ALGazeAnalysis, ALSittingPeopleDetection: stubs)
 # The built-ins a NAO 2.1 autoloads and the desktop suite does not (expressiveness after
 # behaviormanager; awareness, blinking and autonomous moves before autonomouslife), and the names
 # they register.

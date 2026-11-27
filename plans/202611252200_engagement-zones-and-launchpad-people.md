@@ -1,6 +1,6 @@
 # Engagement zones and the launchpad's people keys
 
-**Status:** In progress
+**Status:** Done
 
 Implements [engagement-zones.md](../specs/services/engagement-zones.md) and [launchpad-people.md](../specs/services/launchpad-people.md): `ALEngagementZones` computes real zones from our population in place of its stub, and a hidden module of ours writes the launchpad's people keys while Life runs, so Life goes to a person by itself on both sims. Two PRs, stacked on the robot state's (#29): the zones first, then the keys. Leaves out the movement keys (no movement detection), 2.1's other launchpad plugins, and the full-scenario live test with our own packages ([autonomous-life.md](../specs/container/autonomous-life.md), "Tests"), which comes after.
 

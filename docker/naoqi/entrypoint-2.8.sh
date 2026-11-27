@@ -14,9 +14,9 @@
 
 LEFT_OUT="audioplayer ttsinterface peopleperception sittingpeopledetection engagementzones gazeanalysis wavingdetection" # ALAudioPlayer's and ALTextToSpeech's libraries; ALPeoplePerception's and the four modules chained to its graph (specs/services/perception-stubs.md)
 OURS="naoqi_sim_audio_device_relay,naoqi_sim_loader,naoqi_sim_speech_front,naoqi_sim_audio_player_front"
-MODULES="naoqi_sim_status_qiservice naoqi_sim_life_qiservice naoqi_sim_speech_qiservice naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice naoqi_sim_speech_recognition_qiservice naoqi_sim_face_detection_qiservice naoqi_sim_people_perception_qiservice naoqi_sim_engagement_zones_qiservice naoqi_sim_perception_stubs_qiservice" # ours, loaded by the loader in order
+MODULES="naoqi_sim_status_qiservice naoqi_sim_life_qiservice naoqi_sim_speech_qiservice naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice naoqi_sim_speech_recognition_qiservice naoqi_sim_face_detection_qiservice naoqi_sim_people_perception_qiservice naoqi_sim_engagement_zones_qiservice naoqi_sim_launchpad_people_qiservice naoqi_sim_perception_stubs_qiservice" # ours, loaded by the loader in order
 REPLACED="ALTextToSpeech ALAudioPlayer ALPeoplePerception" # the built-in names our modules take
-ADDED="ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer ALSpeechRecognition _AsrCompiler1 ALFaceDetection ALEngagementZones ALGazeAnalysis ALSittingPeopleDetection ALWavingDetection _UserIdentification _NaoqiSimPerceptionSources" # names no built-in holds, which we register (after ALFaceDetection: stubs)
+ADDED="ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer ALSpeechRecognition _AsrCompiler1 ALFaceDetection ALEngagementZones ALGazeAnalysis ALSittingPeopleDetection ALWavingDetection _UserIdentification _NaoqiSimPerceptionSources _NaoqiSimLaunchpadPeople" # names no built-in holds, which we register (after ALFaceDetection: stubs)
 # Registered last at boot: the last autoload entry, and the package services that call our modules.
 LAST="ALPanoramaCompass ALAnimatedSpeech ALDialog ALAutonomousLife"
 

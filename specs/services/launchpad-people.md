@@ -1,13 +1,21 @@
 ---
 code:
+  - docker/naoqi/services/launchpad-people/naoqi_sim_launchpad_people_core.py
+  - docker/naoqi/services/launchpad-people/naoqi_sim_launchpad_people_almodule.py
+  - docker/naoqi/services/launchpad-people/naoqi_sim_launchpad_people_qiservice.py
+  - docker/naoqi/entrypoint-2.1.sh
+  - docker/naoqi/entrypoint-2.8.sh
 tests:
+  - tests/test_launchpad_people_core.py
+  - tests/test_entrypoint.py
+  - tests-e2e/test_life_live.py
 ---
 
 # Launchpad people keys
 
-**Status:** Draft
+**Status:** Implemented
 
-Decided Nov 25, 2026, after finding why the desktop launchpad writes no people key (trail in `spike/RESULTS.md`, "Launchpad plugins: why none starts on the sims"). What a NAO 2.1 writes was measured on a real one on Nov 21, 2026. Plan: [202611252200_engagement-zones-and-launchpad-people.md](../../plans/202611252200_engagement-zones-and-launchpad-people.md). Reviewed by the user Nov 25, 2026; `Stable` with its code, in the plan's second PR.
+Decided Nov 25, 2026, after finding why the desktop launchpad writes no people key (trail in `spike/RESULTS.md`, "Launchpad plugins: why none starts on the sims"). What a NAO 2.1 writes was measured on a real one on Nov 21, 2026. Plan: [202611252200_engagement-zones-and-launchpad-people.md](../../plans/202611252200_engagement-zones-and-launchpad-people.md). Reviewed by the user Nov 25, 2026; built Nov 25, 2026.
 
 ## Purpose
 
@@ -72,7 +80,8 @@ So the zone counts follow the zones module's lists, with their rule: a person wh
 
 - A service folder of its own, `docker/naoqi/services/launchpad-people/`: a core tested on the host with a fake memory and a fake clock, under an `ALModule` shell on 2.1 and a qi service shell on 2.8, hidden name `_NaoqiSimLaunchpadPeople`, no method for clients.
 - Loaded after the engagement zones module. It subscribes to `AutonomousLife/State` once Life answers, and reads the current state then.
-- Listed in the status service next to the stubs, so a client tells naoqi-sim's keys from a robot's plugins ([status-service.md](../container/status-service.md)).
+- Listed in the status service next to the stubs, so a client tells naoqi-sim's keys from a robot's plugins: `NaoqiSim/Life/LaunchpadPeople` names the keys it writes ([status-service.md](../container/status-service.md)).
+- **It follows the events on a thread of its own**: an ALMemory callback queues the event and returns, and the module handles them in order (subscribing and unsubscribing the two modules from a callback would wait on NAOqi from NAOqi's own thread). It subscribes to `AutonomousLife/State` at load, whether Life answers yet or not, and reads the current state (`disabled` when Life never raised one).
 
 ### Tests
 
