@@ -19,7 +19,7 @@ recorded in `<image-data>/hashes.json`, so a file that has not changed since is 
 (the 2.8 suite alone is 1.3 GB).
 
 `check_image_data` asks each pinned URL, with a HEAD request and no download, whether it still
-serves the pinned file: what CI runs every night (specs/testing/ci.md, "The nightly image data check").
+serves the pinned file: what CI runs every day (specs/testing/ci.md, "The daily image data check").
 
 The robot image (`.opn`) is a 4096-byte `ALDIMAGE` header, an installer shell script whose
 variables locate the payload, then the compressed ext3 root filesystem (bzip2 on 2.1, gzip on

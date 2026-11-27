@@ -1,23 +1,19 @@
-# The nightly image data check — specs/testing/ci.md, "The nightly image data check".
+# The daily image data check — specs/testing/ci.md, "The daily image data check".
 #
 # The NAOqi images are built from files Aldebaran publishes (the Choregraphe suites, the robot
 # images, the C++ SDKs), at the URLs pinned in src/naoqi_sim/suite.py. The image cache hides them
 # from ci.yml: a cache hit downloads nothing, so a file taken offline would go unnoticed until
-# the next cold build, or a user's first one. Every night this asks each URL, with a HEAD request
+# the next cold build, or a user's first one. Every morning this asks each URL, with a HEAD request
 # and no download, whether it still serves the pinned file. A failure opens an issue.
-# Not part of ci.yml: a pull request has nothing to say about Aldebaran's servers, unless it
-# changes the pins or this workflow, and then it runs here too.
+# Not part of ci.yml: a pull request has nothing to say about Aldebaran's servers.
 
 name: Image data check
 
 on:
   schedule:
-    - cron: "17 3 * * *" # every night, off the hour, when GitHub's schedules are less loaded
+    # Every day at 09:00 UTC: 10 am in Paris in winter, 11 am in summer (a cron is in UTC).
+    - cron: "0 9 * * *"
   workflow_dispatch:
-  pull_request:
-    paths:
-      - src/naoqi_sim/suite.py # the pins
-      - .github/workflows/image-data-check.yml
 
 permissions:
   contents: read
@@ -45,7 +41,7 @@ jobs:
           import sys
           from naoqi_sim import suite
           sys.exit(bool(suite.check_image_data()))" 2>&1 | tee "$RUNNER_TEMP/image-data-check.log"
-      # One open issue at a time: the nights after the first leave it as it is, and the job
+      # One open issue at a time: the days after the first leave it as it is, and the job
       # stays red until the pins are fixed or the files are back.
       - name: Open an issue
         if: failure() && github.event_name == 'schedule'
@@ -61,7 +57,7 @@ jobs:
             exit 0
           fi
           {
-            echo "The nightly check found that a file the NAOqi images are built from is no longer served at its pinned URL (\`src/naoqi_sim/suite.py\`): \`naoqi-sim fetch-and-build-images\` fails for the versions below, on any machine that does not hold the file already."
+            echo "The daily check found that a file the NAOqi images are built from is no longer served at its pinned URL (\`src/naoqi_sim/suite.py\`): \`naoqi-sim fetch-and-build-images\` fails for the versions below, on any machine that does not hold the file already."
             echo
             echo "Run: $RUN_URL"
             echo

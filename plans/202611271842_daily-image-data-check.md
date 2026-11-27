@@ -1,14 +1,14 @@
-# Nightly image data check
+# Daily image data check
 
 **Status:** Done
 
-Implements [ci.md](../specs/testing/ci.md) ("The nightly image data check"): a scheduled workflow that asks each pinned image data URL, with a HEAD request, whether it still serves its file, and opens an issue when one does not. It leaves the engines' models and the meshes out, and downloads nothing: the full hashes stay the cold build's.
+Implements [ci.md](../specs/testing/ci.md) ("The daily image data check"): a scheduled workflow that asks each pinned image data URL, with a HEAD request, whether it still serves its file, and opens an issue when one does not. It leaves the engines' models and the meshes out, and downloads nothing: the full hashes stay the cold build's.
 
 ## Scope
 
 - `src/naoqi_sim/suite.py` — `PinnedFile.size`, pinned for the six downloads; `download_problem` (one HEAD request: status, `Content-Length`, a SHA-256 `ETag`) and `check_image_data` (every pinned file, three tries)
 - `tests/test_suite.py` — the check against a local server that answers HEAD only: all served, a 404, a passing fault, another size, another hash, an ETag that is not a hash, no answer; every real pin has its size
-- `.github/workflows/image-data-check.yml` — the nightly schedule, the check, the issue on failure
+- `.github/workflows/image-data-check.yml` — the daily schedule, the check, the issue on failure
 - `specs/testing/ci.md`, `specs/container/container.md`, `specs/_index.md`, `AGENTS.md`, this plan and `plans/_index.md`
 
 ## Steps
