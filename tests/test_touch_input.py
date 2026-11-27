@@ -120,7 +120,10 @@ def test_the_api_taps_for_the_time_asked(device, memory):
     asyncio.run(touch.tap("Head/Touch/Middle", duration_s=0.3))
     (_, pressed, at_press), (_, released, at_release) = memory.writes
     assert (pressed, released) == (1.0, 0.0)
-    assert at_release - at_press >= 0.3
+    # held the time asked, to the monotonic clock's tick (about 15.6 ms on Windows, where a
+    # sleep can end up to one tick early on that clock)
+    tick = time.get_clock_info("monotonic").resolution
+    assert at_release - at_press >= 0.3 - tick
     assert touch.pressed() == []
 
 
