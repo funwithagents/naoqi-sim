@@ -1,13 +1,22 @@
 ---
 code:
+  - docker/naoqi/services/engagement-zones/naoqi_sim_engagement_zones_core.py
+  - docker/naoqi/services/engagement-zones/naoqi_sim_engagement_zones_almodule.py
+  - docker/naoqi/services/engagement-zones/naoqi_sim_engagement_zones_qiservice.py
+  - docker/naoqi/services/people-perception/naoqi_sim_people_perception_core.py
+  - docker/naoqi/entrypoint-2.1.sh
+  - docker/naoqi/entrypoint-2.8.sh
 tests:
+  - tests/test_engagement_zones_core.py
+  - tests/test_entrypoint.py
+  - tests-e2e/test_perception_live.py
 ---
 
 # Engagement zones: ALEngagementZones replacement
 
-**Status:** Draft
+**Status:** Stable
 
-Decided Nov 25, 2026: the module computes real zones, in place of the API-only stub of [perception-stubs.md](perception-stubs.md). The rule, the setters and the lists below were measured the same day on a real NAO 2.1 (trail in `spike/RESULTS.md`, "Launchpad plugins: why none starts on the sims; engagement zones measured on bobby"). No plan yet.
+Decided Nov 25, 2026: the module computes real zones, in place of the API-only stub of [perception-stubs.md](perception-stubs.md). The rule, the setters and the lists below were measured the same day on a real NAO 2.1 (trail in `spike/RESULTS.md`, "Launchpad plugins: why none starts on the sims; engagement zones measured on bobby"). Plan: [202611252200_engagement-zones-and-launchpad-people.md](../../plans/202611252200_engagement-zones-and-launchpad-people.md). Reviewed by the user Nov 25, 2026.
 
 ## Purpose
 

@@ -7,7 +7,9 @@ detector finds (specs/services/people-perception.md).
 each face is matched to a known person by angular distance or becomes a new one, its head is
 placed at the distance the face's angular height gives, in the torso, robot and world frames
 through the camera's transforms, and the people-perception contract is written to ALMemory, the
-keys first, then the events the built-in awareness, tracker and user session react to.
+keys first, then the events the built-in awareness, tracker and user session react to. Between the
+two, the population goes to the modules built on it in-process (the engagement zones), so their
+keys are in ALMemory when the events come.
 """
 import math
 import threading
@@ -31,7 +33,8 @@ EVENTS = [PREFIX + e for e in ("JustArrived", "JustLeft", "MaximumDetectionRange
                                 "RemovedPersonFromMemory", "VisiblePeopleList")]
 KEYS = [PREFIX + "PeopleList", PREFIX + "VisiblePeopleList", PREFIX + "NonVisiblePeopleList"]
 PERSON_KEYS = ("PositionInTorsoFrame", "PositionInRobotFrame", "PositionInWorldFrame", "Distance", "AnglesYawPitch",
-               "IsVisible", "IsFaceDetected", "NotSeenSince", "PresentSince", "RealHeight")
+               "IsVisible", "IsFaceDetected", "NotSeenSince", "PresentSince", "RealHeight",
+               "EngagementZone")  # the zones module's, removed with the person
 # The built-in's defaults, from the suite's peopleperception_sources.mds (NearPopulation_MaximumDetectionRange,
 # Tracker_TimeBeforeVisiblePersonDisappears, Tracker_TimeBeforeNonVisiblePersonDisappears)
 SETTINGS = {
@@ -92,6 +95,7 @@ class Population(ext.Extractor):
         self.next_id = 1
         self.state_lock = threading.Lock()
         self.last_counts = None
+        self.consumers = []  # modules built on the population: on_population([(id, robot xyz)])
         self.insert(PREFIX + "PeopleList", [])
         self.insert(PREFIX + "VisiblePeopleList", [])
         self.insert(PREFIX + "NonVisiblePeopleList", [])
@@ -102,6 +106,23 @@ class Population(ext.Extractor):
         if self.clock is not None:
             return self.clock()
         return time.time()
+
+    def add_consumer(self, consumer):
+        """A module that takes every population in-process (consumer.on_population(people), people a
+        list of (id, [x, y, z] in the robot frame)), after the keys and before the events."""
+        self.consumers.append(consumer)
+
+    def _snapshot(self):
+        """The population as the consumers get it; taken under the state lock."""
+        return [(p.id, list(p.robot)) for p in self._sorted()]
+
+    def _hand_over(self, people):
+        """Outside the state lock: a consumer raises events, whose callbacks may call us."""
+        for consumer in self.consumers:
+            try:
+                consumer.on_population(people)
+            except Exception as e:  # noqa: BLE001  a consumer's failure never stops the population
+                self.log(method="consumer-failed", consumer=repr(consumer), error=repr(e))
 
     # -- the detector's consumer ------------------------------------------------
     def wants(self):
@@ -151,6 +172,8 @@ class Population(ext.Extractor):
             left = self._age(now)
             self._write_keys(now)
             visible = [p.id for p in self._sorted() if p.visible]
+            snapshot = self._snapshot()
+        self._hand_over(snapshot)
         for pid in arrived:
             self.raise_event(PREFIX + "JustArrived", pid)
             self.signal("justArrived", pid)
@@ -179,8 +202,10 @@ class Population(ext.Extractor):
             changed = bool(left) or visible_before != visible_after
             if changed:
                 self._write_keys(now)
+                snapshot = self._snapshot()
         if not changed:
             return
+        self._hand_over(snapshot)
         for pid in left:
             self.raise_event(PREFIX + "JustLeft", pid)
             self.signal("justLeft", pid)
@@ -251,6 +276,8 @@ class Population(ext.Extractor):
                 del self.people[pid]
                 self._remove_person(pid)
             self._write_keys(self.now())
+            snapshot = self._snapshot()
+        self._hand_over(snapshot)
         self.raise_event(PREFIX + "PopulationReset", None)
         self.signal("populationReset")
         self.log(method="resetPopulation", removed=ids)

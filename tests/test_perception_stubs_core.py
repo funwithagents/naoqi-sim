@@ -26,6 +26,16 @@ def shell(methods, varargs=False, **extractor) -> Any:
     return Shell("Test", **extractor)
 
 
+# A table as a module's: the generics, a setting, and a method with a shorter overload (as
+# ALEngagementZones' computeEngagementZone, three or four arguments).
+SAMPLE_METHODS = [
+    *core.GENERICS,
+    ("setThing", 1, {}, core.setter("Thing")),
+    ("getThing", 0, {}, core.getter("Thing")),
+    ("compute", 4, {3: "None"}, lambda s, a, b, c, d: 3 if d is None else 4),
+]
+
+
 def test_subscriptions_give_the_period_and_are_listed_as_the_robot_lists_them():
     s = shell(core.GENERICS, default_period=500)
     s.subscribe("awareness")  # the one-argument form: the module's default period
@@ -65,32 +75,29 @@ def test_pause_keeps_the_subscriptions_and_stops_the_processing():
 
 
 def test_generated_methods_have_real_argument_lists_for_an_almodule():
-    s = shell(core.ENGAGEMENT_METHODS, settings=core.ENGAGEMENT_SETTINGS)
+    s = shell(SAMPLE_METHODS, settings={"Thing": 1.0})
     spec = inspect.getfullargspec(type(s).subscribe)
     assert spec.args == ["self", "a0", "a1", "a2"] and spec.defaults == (-1, -1.0)
-    assert inspect.getfullargspec(type(s).computeEngagementZone).args == [
+    assert inspect.getfullargspec(type(s).compute).args == [
         "self",
         "a0",
         "a1",
         "a2",
         "a3",
     ]
-    assert type(s).setLimitAngle.__doc__ == "naoqi-sim: setLimitAngle"
+    assert type(s).setThing.__doc__ == "naoqi-sim: setThing"
     # the shorter overloads an ALModule binds explicitly
-    assert core.overloads(core.ENGAGEMENT_METHODS) == [
-        ("subscribe", 1),
-        ("computeEngagementZone", 3),
-    ]
+    assert core.overloads(SAMPLE_METHODS) == [("subscribe", 1), ("compute", 3)]
 
 
 def test_varargs_methods_complete_the_missing_arguments_with_the_defaults():
-    s = shell(core.ENGAGEMENT_METHODS, varargs=True, settings=core.ENGAGEMENT_SETTINGS)
+    s = shell(SAMPLE_METHODS, varargs=True, settings={"Thing": 1.0})
     assert inspect.getfullargspec(type(s).subscribe).varargs == "args"
     s.subscribe("awareness")
     s.subscribe("client", 100, 0.5)
     assert s.getSubscribersInfo() == [["awareness", 200, 0.0], ["client", 100, 0.5]]
-    assert s.computeEngagementZone(1.0, 0.0, 0.0) == 0
-    assert s.computeEngagementZone(1.0, 0.0, 0.0, [0.0] * 6) == 0
+    assert s.compute(1.0, 0.0, 0.0) == 3
+    assert s.compute(1.0, 0.0, 0.0, [0.0] * 6) == 4
 
 
 @pytest.mark.parametrize("stub", core.STUBS, ids=lambda s: str(s.name28))
@@ -136,13 +143,9 @@ def test_the_trackers_start_and_stop_with_either_overload():
 
 
 def test_each_version_serves_its_own_stubs():
-    assert core.stub_names("2.1") == [
-        "ALEngagementZones",
-        "ALGazeAnalysis",
-        "ALSittingPeopleDetection",
-    ]
+    # ALEngagementZones computes its zones: a module of its own, not a stub
+    assert core.stub_names("2.1") == ["ALGazeAnalysis", "ALSittingPeopleDetection"]
     assert core.stub_names("2.8") == [
-        "ALEngagementZones",
         "ALGazeAnalysis",
         "ALSittingPeopleDetection",
         "ALWavingDetection",
@@ -150,13 +153,13 @@ def test_each_version_serves_its_own_stubs():
     written = {}
     assert core.write_stubs_key(written.__setitem__, "2.8")[-1] == "_UserIdentification"
     assert written == {
-        "NaoqiSim/Perception/Stubs": "ALEngagementZones,ALGazeAnalysis,ALSittingPeopleDetection,"
+        "NaoqiSim/Perception/Stubs": "ALGazeAnalysis,ALSittingPeopleDetection,"
         "ALWavingDetection,_UserIdentification"
     }
     core.write_stubs_key(written.__setitem__, "2.1")
     assert (
         written["NaoqiSim/Perception/Stubs"]
-        == "ALEngagementZones,ALGazeAnalysis,ALSittingPeopleDetection"
+        == "ALGazeAnalysis,ALSittingPeopleDetection"
     )
 
 

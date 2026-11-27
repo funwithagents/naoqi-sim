@@ -30,7 +30,6 @@ This spec gives each of them an API-only stub, the kind the inventory analysis d
 
 | Service | 2.1 | 2.8 | Own methods (beyond the extractor API) | Signals (2.8) |
 | --- | --- | --- | --- | --- |
-| `ALEngagementZones` | yes | yes | `setLimitAngle`/`getLimitAngle` (90°), `setFirstLimitDistance`/`getFirstLimitDistance` (1.5 m), `setSecondLimitDistance`/`getSecondLimitDistance` (2.5 m), `computeEngagementZone(x, y, z)` and `computeEngagementZone(x, y, z, cameraPose)` (0) | `limitAngleChanged(f)`, `firstLimitChanged(f)`, `secondLimitChanged(f)` |
 | `ALGazeAnalysis` | yes | yes | `setFaceAnalysisEnabled`/`isFaceAnalysisEnabled`, `setTolerance`/`getTolerance` | |
 | `ALSittingPeopleDetection` | yes | yes | `setSittingThreshold`/`getSittingThreshold` | |
 | `ALWavingDetection` | no: a real NAO 2.1 has none ([naoqi-fidelity.md](../container/naoqi-fidelity.md)); dropped with the library, as the depth modules are | yes, until a NAO 6 says otherwise | `setMaxDistance`/`getMaxDistance`, `setMinSize`/`getMinSize` | |
@@ -39,7 +38,7 @@ This spec gives each of them an API-only stub, the kind the inventory analysis d
 | `_UserIdentification` | absent on 2.1 | stubbed (below) | | its 11 properties |
 
 - **The extractor API** is the one of [face-detection.md](face-detection.md): subscriptions kept and listed, `getCurrentPeriod` the smallest period, `pause`/`isPaused`, `isProcessing` false (nothing processes), `getEventList`/`getMemoryKeyList`/`getOutputNames` answering the documented names. What NAOqi calls on them, measured: Autonomous Life reads `ALEngagementZones.getFirstLimitDistance` when it configures awareness and `_ALFastPersonTracking.getDefaultPeriod` in `solitary`; nothing else.
-- **Events** are declared (`getEventList`) and never raised; the keys never written. A client subscribing to `EngagementZones/PersonEnteredZone1` waits as it did on the desktop.
+- **Events** are declared (`getEventList`) and never raised; the keys never written. A client subscribing to `GazeAnalysis/PersonStartsLookingAtRobot` waits as it did on the desktop.
 - **Settings round-trip**: each setter stores, each getter answers the last value, with the defaults above.
 
 ### The tracking processes: kept, with the sources they read (2.8)
@@ -71,6 +70,6 @@ A function that `exec`s generated code may hold no generator expression with a f
 ## Open questions
 
 0. **The modularity programs are text.** Found Oct 29, 2026 (and used for the tracking processes above): the modularity processes are defined by `.mds` programs the suites ship (`/opt/naoqi/share/naoqi/vision/mds/`, a `source`/`process`/`filter` language, `peopleperception_process.mds`, `fastpersontracking_process.mds`...), which `ALModularity.loadProgramFromFile` loads; the dependents' processes consume `PeoplePerception_process:population`. A program of naoqi-sim's defining a `PeoplePerception_process` from a settable `source` (an `Identity` filter) fed by `ALModularity.setData` from the population might let the dependents' own libraries load and run on it, in place of the stubs, if the `population` type can be given as an `ALValue`: a filter type to measure. Until then the stubs stand; this is the lever to try before writing real zones by hand.
-1. **Real engagement zones.** `ALEngagementZones` is geometry over the population: the zone of each person from the two distances and the angle, `PeopleInZone1..3`, `PersonEnteredZone`/`PersonMovedAway`/`PersonApproached`, `computeEngagementZone` answering for a point. A client that uses the zone events, or Autonomous Life's zone conditions (which the desktop's launchpad lacks anyway), would justify it.
+1. ~~**Real engagement zones.**~~ Settled Nov 25, 2026: `ALEngagementZones` computes its zones from the population, a module of its own ([engagement-zones.md](engagement-zones.md)); it is no longer a stub.
 2. **Gaze, sitting, waving** stay stubs: a gaze estimate from the landmarks is conceivable, sitting and waving need bodies.
 3. **A NAO 6's module set** (`ALWavingDetection`, the hidden trackers) is unmeasured: no 2.8 robot. The 2.8 stubs follow the desktop suite's set.
