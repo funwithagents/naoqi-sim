@@ -68,10 +68,15 @@ class NullSink:
 
 
 class DevicePlayer:
-    """Plays the mix on an output device; `sounddevice` is imported at the first run."""
+    """Plays the mix on an output device; `sounddevice` is imported at the first run.
+
+    `muted`, the user's: while set, the device plays silence of the same length, so its timing
+    does not change and nothing before the sink notices (specs/host/audio-output.md, "Muting
+    the loudspeakers")."""
 
     def __init__(self, device: int | str | None = None):
         self.device = device
+        self.muted = False
         self._stream: Any = None
 
     def begin(self, rate: int, channels: int) -> None:
@@ -92,7 +97,7 @@ class DevicePlayer:
 
     def feed(self, chunk: bytes) -> None:
         if self._stream is not None:
-            self._stream.write(chunk)
+            self._stream.write(bytes(len(chunk)) if self.muted else chunk)
 
     def end(self, interrupted: bool) -> None:
         stream, self._stream = self._stream, None

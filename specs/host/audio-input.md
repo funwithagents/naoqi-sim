@@ -58,7 +58,18 @@ sim.fake_audio.stop()  # every sound playing now
 
 #### The host microphone
 
-Captured with `sounddevice` (`RawInputStream`, int16, mono, 48 kHz, blocks of 10 ms) from the default input device, opened when the input starts and closed when it stops, for the whole run whatever the container side needs, as a NAO's microphones are always on (decided Nov 27, 2026: opened only while audio was needed, it followed speech recognition, which subscribes around each listening, and the microphone went on and off with every turn of a dialog). What it captures while nothing is needed is dropped, and when a need comes back the first block sent is the room now, not the up to 200 ms captured before. `NaoqiSim.start()` checks at step 1 that `sounddevice` imports (PortAudio is present) and that a default input device exists, failing with `DeviceUnavailableError` otherwise. The input logs at info level that the microphone is live when it opens and off when it closes, once a run: the terminal indicator of [devices.md](devices.md) ("Off unless asked"). An indicator in the sim window waits for naoqi-viewer to offer one.
+Captured with `sounddevice` (`RawInputStream`, int16, mono, 48 kHz, blocks of 10 ms) from the default input device, opened when the input starts and closed when it stops, for the whole run whatever the container side needs (unless the user mutes it, below), as a NAO's microphones are always on (decided Nov 27, 2026: opened only while audio was needed, it followed speech recognition, which subscribes around each listening, and the microphone went on and off with every turn of a dialog). What it captures while nothing is needed is dropped, and when a need comes back the first block sent is the room now, not the up to 200 ms captured before. `NaoqiSim.start()` checks at step 1 that `sounddevice` imports (PortAudio is present) and that a default input device exists, failing with `DeviceUnavailableError` otherwise. The input logs at info level that the microphone is live when it opens and off when it closes, once a run (and at each mute and unmute): the terminal indicator of [devices.md](devices.md) ("Off unless asked"). An indicator in the sim window waits for naoqi-viewer to offer one.
+
+#### Muting the microphone
+
+The user mutes their microphone (decided Nov 27, 2026): the robot then hears nothing from it until it is unmuted. `MicSource.mute(muted)`, reached as `await sim.mute_input()` / `await sim.mute_input(False)` ([api.md](../runtime/api.md)) or the controls page's microphone button ([controls.md](controls.md), "The page").
+
+- **The device is closed while muted**, so the operating system's microphone indicator goes off: muting is the user's privacy, not a gain set to zero. Unmuting reopens it while the input runs; the first block sent is the room after the reopening.
+- **The robot hears silence**, at the normal cadence: the producer keeps sending zero chunks while audio is needed, as from a quiet room, so `ALAudioDevice`'s subscribers, the energies and speech recognition carry on as on a NAO in a silent room. `NaoqiSim/Audio/Source` stays `mic`.
+- A mute before the input starts holds: `open()` leaves the device closed. A stopped input forgets it: the next run starts unmuted.
+- The microphone being off, the robot no longer hears its own voice through the room either.
+- The input logs the muting and the unmuting at info level, with the device's "off" and "live" lines.
+- Only the `mic` source has it: the fake source is silent unless code plays into it.
 
 ### Formats, channels and the mono policy
 

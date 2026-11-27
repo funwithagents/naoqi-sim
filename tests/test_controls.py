@@ -7,11 +7,15 @@ import json
 import threading
 from typing import Any
 
+import numpy as np
 import pytest
 from ports import free_port
+from test_audio_input import fake_sounddevice  # noqa: F401 (a fixture)
 from test_touch_input import FakeMemory
 
 from naoqi_sim import controls as controls_module
+from naoqi_sim.audio_input import MicSource
+from naoqi_sim.audio_output import DevicePlayer
 from naoqi_sim.controls import Controls, stop_activity_gesture
 from naoqi_sim.errors import CameraNotFedError
 from naoqi_sim.touch_input import KEY, SENSORS, TouchInput
@@ -95,6 +99,10 @@ def test_state_shows_the_version_the_touches_and_the_cameras(server, touch):
         "cameras": {
             "top": {"covered": False, "fed": True},
             "bottom": {"covered": False, "fed": False},
+        },
+        "audio": {  # neither the microphone nor the loudspeakers given: nothing to mute
+            "input": {"mutable": False, "muted": False},
+            "output": {"mutable": False, "muted": False},
         },
     }
 
@@ -228,6 +236,7 @@ def test_the_page_names_every_sensor_and_calls_the_api(server):
         "/api/touch/tap",
         "/api/cameras/",
         "/api/gestures/stop-activity",
+        "/api/audio/",
     ):
         assert path in text
     assert "http://" not in text.replace(
@@ -501,3 +510,65 @@ def test_the_robot_session_closes_with_the_server(touch, video, robot):
     controls.start()
     controls.stop()
     assert robot.closed
+
+
+# --- The mutes ---------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def audio_server(touch, video, fake_sounddevice):  # noqa: F811
+    streams, _ = fake_sounddevice
+    mic, player = MicSource(), DevicePlayer()
+    mic.open()  # the audio input started: the microphone is live
+    controls = Controls(
+        free_port(), "2.8", touch, video, sleep=lambda s: None, mic=mic, player=player
+    )
+    controls.start()
+    yield controls, streams, mic, player
+    controls.stop()
+    mic.close()
+
+
+def test_the_microphone_is_muted_and_unmuted_from_the_page(audio_server):
+    controls, streams, mic, _ = audio_server
+    status, state = request(controls, "POST", "/api/audio/input", {"muted": True})
+    assert status == 200
+    assert state["audio"]["input"] == {"mutable": True, "muted": True}
+    assert streams[0].calls == ["start", "stop", "close"]  # the device is off
+    assert np.abs(mic.read(0.0, 480)).max() == 0  # the robot hears silence
+    status, state = request(controls, "POST", "/api/audio/input", {"muted": False})
+    assert state["audio"]["input"] == {"mutable": True, "muted": False}
+    assert len(streams) == 2 and streams[1].calls == ["start"]  # live again
+
+
+def test_the_loudspeakers_are_muted_and_unmuted_from_the_page(audio_server):
+    controls, _, _, player = audio_server
+    status, state = request(controls, "POST", "/api/audio/output", {"muted": True})
+    assert status == 200 and player.muted
+    assert state["audio"]["output"] == {"mutable": True, "muted": True}
+    player.muted = False  # unmuted from Python: the page sees it
+    _, state = request(controls, "GET", "/api/state")
+    assert state["audio"]["output"] == {"mutable": True, "muted": False}
+
+
+@pytest.mark.parametrize("side", ["input", "output"])
+def test_a_side_with_nothing_to_mute_is_409(server, side):
+    status, answer = request(server, "POST", f"/api/audio/{side}", {"muted": True})
+    assert status == 409 and "nothing to mute" in answer["error"]
+
+
+@pytest.mark.parametrize("body", [{}, {"muted": "yes"}, {"muted": 1}])
+def test_a_bad_mute_is_400_and_changes_nothing(audio_server, body):
+    controls, streams, mic, player = audio_server
+    for side in ("input", "output"):
+        status, answer = request(controls, "POST", f"/api/audio/{side}", body)
+        assert status == 400 and "muted must be true or false" in answer["error"]
+    assert not mic.muted and not player.muted and len(streams) == 1
+    status, _ = request(controls, "POST", "/api/audio/both", {"muted": True})
+    assert status == 404
+
+
+def test_the_page_has_the_two_mute_buttons_on_its_title_line(server):
+    _, page = request(server, "GET", "/")
+    header = page.decode().split("<header>")[1].split("</header>")[0]
+    assert 'id="mute-input"' in header and 'id="mute-output"' in header

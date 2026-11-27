@@ -552,3 +552,46 @@ def test_device_player_plays_each_run_and_cuts_on_interruption(fake_sounddevice)
     assert finished.written == b"abcd"
     assert finished.calls == ["start", "stop", "close"]  # drained
     assert cut.calls == ["start", "abort", "close"]  # cut at once
+
+
+def test_a_muted_device_player_plays_silence_of_the_same_length(fake_sounddevice):
+    """The loudspeakers muted: the device stream runs as usual, fed zeros in place of the mix,
+    so its timing does not change; unmuted, the mix is heard again from the next tick."""
+    player = DevicePlayer()
+    player.begin(MIX_RATE, 2)
+    player.feed(b"ab")
+    player.muted = True
+    player.feed(b"cdef")
+    player.muted = False
+    player.feed(b"gh")
+    player.end(False)
+    (stream,) = fake_sounddevice
+    assert stream.written == b"ab" + bytes(4) + b"gh"
+    assert stream.calls == ["start", "stop", "close"]
+
+
+def test_muting_the_loudspeakers_leaves_the_listeners_hearing_the_robot(
+    fake_sounddevice,
+):
+    """Only the device is silent: what listens to the mix (the fake room) still gets it."""
+    player = DevicePlayer()
+    player.muted = True
+    output = AudioOutput(player)
+    heard: list[bytes] = []
+    output.listeners.append(lambda chunk, rate, channels, at: heard.append(chunk))
+    server = Server(("127.0.0.1", 0), output)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        port = server.server_address[1]
+        header = {"cmd": "play", "rate": MIX_RATE, "channels": 2, "format": "s16le"}
+        with socket.create_connection(("127.0.0.1", port)) as s:
+            s.sendall(json.dumps(header).encode() + b"\n" + b"\x10\x00" * 2 * 4800)
+            s.shutdown(socket.SHUT_WR)
+            while s.recv(4096):
+                pass
+    finally:
+        server.shutdown()
+        server.server_close()
+    (stream,) = fake_sounddevice
+    assert stream.written and not any(stream.written)  # the device: silence
+    assert any(b"\x10\x00" in chunk for chunk in heard)  # the fake room: the robot

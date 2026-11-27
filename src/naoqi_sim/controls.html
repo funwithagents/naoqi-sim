@@ -72,12 +72,35 @@
   .rbtns button { padding: 3px 8px; }
   button.current { border-color: var(--accent); color: var(--accent); }
   #robotmsg.error { color: var(--pressed); }
+  /* The user's mutes, at the right end of the title line (specs/host/controls.md, "The mutes") */
+  .mutes { margin-left: auto; display: flex; gap: 6px; align-self: center; }
+  .mute { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; font-size: 12px; }
+  .mute[hidden] { display: none; }
+  .mute svg { width: 14px; height: 14px; margin: 0; fill: none; stroke: currentColor;
+              stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .mute .slash { display: none; }
+  .mute[aria-pressed="true"] { background: var(--pressed); border-color: var(--pressed); color: #fff; }
+  .mute[aria-pressed="true"] .slash { display: inline; }
 </style>
 </head>
 <body>
 <header>
   <h1>naoqi-sim controls</h1>
   <span id="status">connecting…</span>
+  <span class="mutes">
+    <button class="mute" id="mute-input" data-side="input" aria-pressed="false" hidden
+            data-on="Mic muted" data-off="Mic"
+            title="Mute your microphone: it is switched off and the robot hears silence">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/>
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="slash" d="M3 3l18 18"/></svg>
+      <span class="mlabel">Mic</span></button>
+    <button class="mute" id="mute-output" data-side="output" aria-pressed="false" hidden
+            data-on="Robot muted" data-off="Robot"
+            title="Mute your loudspeakers: you stop hearing the robot, which plays on">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/>
+        <path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/><path class="slash" d="M3 3l18 18"/></svg>
+      <span class="mlabel">Robot</span></button>
+  </span>
 </header>
 <main>
   <section>
@@ -223,6 +246,7 @@ function render(s) {
   document.getElementById("camerahint").textContent =
     Object.values(s.cameras).some(c => !c.fed) ? "A camera with no source cannot be covered." : "";
   renderRobot(s.robot);
+  renderMutes(s.audio);
   document.getElementById("gesturehint").textContent = s.naoqi_version.startsWith("2.1")
     ? "2.1: the three head sensors held 3.5 s."
     : "2.8: the top camera covered, the front sensor held 2 s, then uncovered.";
@@ -269,6 +293,22 @@ for (const b of document.querySelectorAll("button.rb")) {
       const name = b.closest(".rline").querySelector(".rname").textContent;
       robotError = name + " " + b.textContent + ": " + e.message; if (state) renderRobot(state.robot); }
   });
+}
+
+// The user's mutes: each button shows only when its side can be muted, filled while muted.
+function renderMutes(audio) {
+  for (const b of document.querySelectorAll("button.mute")) {
+    const side = audio && audio[b.dataset.side];
+    b.hidden = !(side && side.mutable);
+    const muted = Boolean(side && side.muted);
+    b.setAttribute("aria-pressed", String(muted));
+    b.querySelector(".mlabel").textContent = muted ? b.dataset.on : b.dataset.off;
+  }
+}
+
+for (const b of document.querySelectorAll("button.mute")) {
+  b.addEventListener("click", () => report(call("/api/audio/" + b.dataset.side,
+    {muted: b.getAttribute("aria-pressed") !== "true"})));
 }
 
 async function poll() {

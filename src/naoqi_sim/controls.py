@@ -1,8 +1,9 @@
 """The controls: a web page a running `NaoqiSim` serves, and its HTTP API (specs/host/controls.md).
 
 A person's hands on the simulated robot: touches held together, a camera covered, the gesture
-that stops the running activity. The controls own no signal: each request drives the device that
-owns it, the touch input (holder `controls`) or the video input. Python's standard HTTP server on
+that stops the running activity; and the user's own microphone and loudspeakers, muted. The
+controls own no signal: each request drives the device that owns it, the touch input (holder
+`controls`), the video input, the microphone or the device player. Python's standard HTTP server on
 127.0.0.1, one thread per request; the page is package data and uses nothing but this API.
 """
 
@@ -18,6 +19,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from naoqi_sim import stack
+from naoqi_sim.audio_input import MicSource
+from naoqi_sim.audio_output import DevicePlayer
 from naoqi_sim.config import NaoqiVersion
 from naoqi_sim.errors import CameraNotFedError
 from naoqi_sim.touch_input import TouchInput, resolve
@@ -212,12 +215,16 @@ class Controls:
         video: VideoInput | None,
         sleep: Callable[[float], None] = time.sleep,
         robot: Robot | None = None,
+        mic: MicSource | None = None,
+        player: DevicePlayer | None = None,
     ):
         self.port = port
         self.version: NaoqiVersion = version
         self.touch = touch
         self.video = video
         self.robot = robot
+        self.mic = mic  # the microphone the user can mute, with the `mic` source
+        self.player = player  # the loudspeakers the user can mute, in `play` mode
         self.sleep = sleep
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -274,6 +281,16 @@ class Controls:
         }
         if self.robot is not None:
             state["robot"] = self.robot.state()
+        state["audio"] = {
+            "input": {
+                "mutable": self.mic is not None,
+                "muted": self.mic is not None and self.mic.muted,
+            },
+            "output": {
+                "mutable": self.player is not None,
+                "muted": self.player is not None and self.player.muted,
+            },
+        }
         return state
 
     def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -316,6 +333,24 @@ class Controls:
                         f"the {camera} camera gets no frames, so there is nothing to cover"
                     )
                 self.video.cover(camera, covered)
+            case ["api", "audio", "input"]:
+                muted = _flag(body, "muted")
+                if self.mic is None:
+                    raise RequestError(
+                        HTTPStatus.CONFLICT,
+                        "the robot does not hear the host microphone "
+                        "(audio_input.source is not 'mic'): nothing to mute",
+                    )
+                self.mic.mute(muted)
+            case ["api", "audio", "output"]:
+                muted = _flag(body, "muted")
+                if self.player is None:
+                    raise RequestError(
+                        HTTPStatus.CONFLICT,
+                        "the robot does not play on the loudspeakers "
+                        "(audio_output.mode is not 'play'): nothing to mute",
+                    )
+                self.player.muted = muted
             case ["api", "gestures", "stop-activity"]:
                 with self._gesture:
                     stop_activity_gesture(

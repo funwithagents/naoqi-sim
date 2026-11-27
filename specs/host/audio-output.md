@@ -1,8 +1,10 @@
 ---
 code:
   - src/naoqi_sim/audio_output.py
+  - src/naoqi_sim/sim.py
 tests:
   - tests/test_audio_output.py
+  - tests/test_sim.py
   - tests-e2e/test_speech_live.py
   - tests-e2e/test_audio_loopback_live.py
 ---
@@ -84,6 +86,15 @@ class AudioSink(Protocol):
 
 - `AudioOutput(sink)` takes one sink. A `NaoqiSim` builds it from its `sink=` argument or the config's `audio_output` block ([api.md](../runtime/api.md), "Construction").
 - The live tier runs its `NaoqiSim` with a `MemorySink` and asserts on the playbacks.
+
+#### Muting the loudspeakers
+
+The user mutes their loudspeakers (decided Nov 27, 2026): the device stops sounding, the robot does not notice. `DevicePlayer.muted`, set by `await sim.mute_output()` / `await sim.mute_output(False)` ([api.md](../runtime/api.md)) or the controls page's loudspeaker button ([controls.md](controls.md), "The page").
+
+- **Zeros to the device.** While muted, `feed` writes silence of the chunk's length: the device stream opens, runs and closes as usual, so its timing and latency do not change and unmuting mid-sentence resumes the voice where it is.
+- **Only the loudspeakers.** Everything before the sink goes on: the streams, the mix, `playing_until`, the speech engine's and the audio player's timing and events, and the listeners (a fake source still hears the robot). It is the user's volume knob, not the robot's: it changes neither `ALAudioDevice`'s output volume nor anything NAOqi reports.
+- With the `mic` source, the microphone stops hearing the robot through the room, since the room is silent.
+- Only a `DevicePlayer` has it (`audio_output.mode = "play"`, or one passed as `sink`): the other sinks make no sound. A `NaoqiSim` sets it back to unmuted when it starts.
 
 ### Playing state
 

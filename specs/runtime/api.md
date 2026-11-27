@@ -123,6 +123,8 @@ So `start()` only checks: an image missing or not verified (the four of them, wh
 | `touch` | `Touch` | The touch sensors ([touch-input.md](../host/touch-input.md), "The API"): `await touch.press(*sensors)`, `release(*sensors)`, `tap(*sensors, duration_s=0.2)`, `touch.pressed()`; `NotRunningError` when not running |
 | `await cover_camera(camera)`, `await uncover_camera(camera)` | `None` | A hand over the `top` or `bottom` camera, or taken away ([controls.md](../host/controls.md), "The camera cover"); `CameraNotFedError` for a camera the video input does not feed |
 | `await stop_activity_gesture()` | `None` | The version's gesture that stops the focused activity ([touch-input.md](../host/touch-input.md), "What a touch does, per version"), returning once done; on 2.8 `CameraNotFedError` when the top camera has no source |
+| `await mute_input(muted=True)` | `None` | Mutes the host microphone (`False` unmutes it): its device is closed and the robot hears silence ([audio-input.md](../host/audio-input.md), "Muting the microphone"); `NaoqiSimError` when `audio_input.source` is not `mic` |
+| `await mute_output(muted=True)` | `None` | Mutes the loudspeakers (`False` unmutes them): the device plays silence, the robot plays on ([audio-output.md](../host/audio-output.md), "Muting the loudspeakers"); `NaoqiSimError` when the sink is not a `DevicePlayer` (`audio_output.mode` is not `play`) |
 | `controls_url` | `str` or `None` | The controls page's address, `http://127.0.0.1:<port>/`; `None` when the `controls` block is off |
 | `config` | `NaoqiSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |
