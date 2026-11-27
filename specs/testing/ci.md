@@ -84,17 +84,17 @@ A second workflow, `.github/workflows/e2e-windows.yml`, runs the live tier on Wi
 
 A third workflow, `.github/workflows/image-data-check.yml`, asks every night whether the files the NAOqi images are built from are still served at their pinned URLs ([container.md](../container/container.md), "Image data and licensing"). They are Aldebaran's, on its GitHub repositories and its download site, and nothing says they stay there. The image cache hides them from `ci.yml`: a hit downloads nothing, so a file taken offline would go unnoticed until the next cold build, or a user's first `fetch-and-build-images`.
 
-- **Scheduled** (`cron: "17 3 * * *"`, 03:17 UTC) and startable by hand (`workflow_dispatch`); never on a pull request or a push, which have nothing to say about Aldebaran's servers. Its own file, so it does not run the jobs of `ci.yml` every night. GitHub runs a schedule from the default branch only, and disables it after 60 days without activity in a public repository (it sends an email first; re-enable it in the Actions tab).
+- **Scheduled** (`cron: "17 3 * * *"`, 03:17 UTC) and startable by hand (`workflow_dispatch`). A pull request or a push has nothing to say about Aldebaran's servers, with one exception: a pull request that changes the pins (`src/naoqi_sim/suite.py`) or the workflow itself runs the check, so a new pin's URL, size and hash are checked in seconds, before the cold build downloads it. Its own file, so it does not run the jobs of `ci.yml` every night. GitHub runs a schedule from the default branch only, and disables it after 60 days without activity in a public repository (it sends an email first; re-enable it in the Actions tab).
 - **What is asked**: the six downloads pinned in `src/naoqi_sim/suite.py`, each version's suite, robot image and C++ SDK. The files extracted from a robot image (`animations.pkg`, 2.8's Life configuration and packages) have no URL of their own.
 - **A HEAD request each, nothing downloaded** (`suite.check_image_data`): a few seconds for the 4.5 GB the six files weigh. A file is there when:
   - the answer is a 200;
   - its `Content-Length` is the size pinned beside the hash (`PinnedFile.size`), which tells the file from a Git LFS pointer or an error page served with a 200;
   - its `ETag`, when it is a SHA-256, is the pinned hash. GitHub's LFS storage answers with the file's SHA-256 as its ETag (measured Nov 27, 2026, on the five files it serves), so for those the check is on the content, not only on the size. Aldebaran's download site (2.1's SDK) gives another kind of ETag, which is not compared.
 - **Three tries, 10 s apart**, before a file counts as unavailable, so a passing network fault does not raise the alarm.
-- **On a failure** the job is red and, on a scheduled run, opens an issue titled "The image data are unavailable" with the check's output and a link to the run, through the job's own token (`issues: write`; no secret). While that issue is open the following nights add nothing to it. A run started by hand opens no issue.
+- **On a failure** the job is red and, on a scheduled run, opens an issue titled "The image data are unavailable" with the check's output and a link to the run, through the job's own token (`issues: write`; no secret). While that issue is open the following nights add nothing to it. A run started by hand or by a pull request opens no issue.
 - **The full hashes** stay the cold build's job: `fetch-and-build-images` hashes every byte it downloads, on a runner at each cache miss and on every user's machine.
 - **Not covered**: the engines' models (Piper's voices on Hugging Face, the Vosk models, YuNet), which their projects publish and each engine's image build or first use fetches; and the NAO meshes, which are naoqi-viewer's download.
-- Not a required check: it runs on no pull request.
+- Not a required check: most pull requests do not run it.
 
 ### Expected skips
 
