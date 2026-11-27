@@ -22,6 +22,7 @@ ADDED_ENTRIES="behaviormanager:expressiveness alpanoramacompass:basicawareness,a
 BUILTINS="_ALExpressiveness ALBasicAwareness _ALAutonomousBlinking ALAutonomousMoves"
 LAST="ALDialog"                           # registered last at boot (dialog, the last entry)
 
+robot_model v5  # a NAO V5 unless the config names another robot this NAOqi runs
 write_autoload "$LEFT_OUT" "pythonbridge:$OURS" $ADDED_ENTRIES
 export NAOQI_SIM_PYTHON_MODULES="$MODULES" NAOQI_SIM_MODULES_DIR="$NAOQI_HOME/modules"
 export NAOQI_SIM_LOOPBACK_9559=naoqi  # the broker is 9559, inside as outside (NaoqiSim/Loopback9559)

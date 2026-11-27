@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from naoqi_sim import files, suite
-from naoqi_sim.config import RobotSettings
+from naoqi_sim.config import SetupSettings
 from naoqi_sim.errors import (
     BootError,
     DockerUnavailableError,
@@ -108,7 +108,7 @@ def naoqi_sim_version() -> str:
 
 
 def _command(version: str) -> str:
-    return f"run `naoqi-sim fetch-and-build-images {version}`"
+    return f"run `naoqi-sim fetch-and-build-images --naoqi {version}`"
 
 
 def resolve(args: Iterable[str]) -> list[str]:
@@ -452,11 +452,11 @@ def _verify(images: Images, env: dict[str, str]) -> None:
             )
         wait_healthy(images)
         wait_tts(
-            images, RobotSettings().available_languages
+            images, SetupSettings().available_languages
         )  # the image has their voices
         wait_perception(images)
         wait_asr(
-            images, RobotSettings().available_languages
+            images, SetupSettings().available_languages
         )  # the image has their models
     finally:
         run(*images.compose(), "down", timeout=300, env=env)
@@ -487,10 +487,15 @@ def _fetch_build_verify(images: Images, image_data: Path) -> None:
 
 
 async def fetch_and_build_images(
-    versions: Iterable[str] | None = None, *, image_data: Path = IMAGE_DATA
+    versions: Iterable[str], *, image_data: Path = IMAGE_DATA
 ) -> None:
-    """Fetch, build and verify the images of each version (default: all), in order."""
-    names = list(versions or IMAGES)
+    """Fetch, build and verify the images of each version named, in order. No default: a
+    version costs gigabytes of downloads and images, so the caller names those it wants."""
+    names = list(versions)
+    if not names:
+        raise ValueError(
+            f"name the NAOqi version(s) to fetch and build: {', '.join(IMAGES)}"
+        )
     if unknown := [v for v in names if v not in IMAGES]:
         raise ValueError(
             f"unknown NAOqi version(s) {', '.join(unknown)}; choose from {', '.join(IMAGES)}"

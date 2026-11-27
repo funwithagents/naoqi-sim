@@ -35,7 +35,7 @@ This spec says what naoqi-sim's images provide so that **Life and its main dialo
 
 ### The state at boot
 
-The config's `robot` block ([config.md](../runtime/config.md)) says what state the robot is in when the sim is ready: its posture, whether its stiffness is on (all joints, as after `wakeUp()`) or off (as after `rest()`), whether Life runs (user, Nov 25, 2026; the fields `posture`, `stiffness_on`, `life_on`). Only the states a NAO can be in are accepted:
+The config's `setup` block ([config.md](../runtime/config.md)) says what state the robot is in when the sim is ready: its posture, whether its stiffness is on (all joints, as after `wakeUp()`) or off (as after `rest()`), whether Life runs (user, Nov 25, 2026; the fields `posture`, `stiffness_on`, `life_on`). Only the states a NAO can be in are accepted:
 
 | `posture` | `stiffness_on` | `life_on` | When ready | Versions |
 |---|---|---|---|---|
@@ -54,7 +54,7 @@ The config's `robot` block ([config.md](../runtime/config.md)) says what state t
 
 #### The default: Life off, at rest
 
-On both versions, with the default `robot` block:
+On both versions, with the default `setup` block:
 
 | | Value |
 |---|---|
@@ -127,7 +127,7 @@ As on a robot out of the box: the dialog content (`dialog_lexicon`, `dialog_appl
 | The face is removed | Life back to `solitary`, the dialog stopped |
 | `setState("disabled")` | At rest again |
 
-- **Built** (Nov 25, 2026): `tests-e2e/test_life_scenario_live.py`, on both versions, after `setState("solitary")` (the boot state is checked by `test_boot_live.py`); again in French, without the application, on a sim booted with `robot.language` French.
+- **Built** (Nov 25, 2026): `tests-e2e/test_life_scenario_live.py`, on both versions, after `setState("solitary")` (the boot state is checked by `test_boot_live.py`); again in French, without the application, on a sim booted with `setup.language` French.
 - **Known issue, 2.1: after an animation, `setState("disabled")` sometimes leaves the robot where it stood.** Measured Nov 26, 2026, 4 runs in 12 of the scenario with the application: Life `disabled`, `robotIsWakeUp()` false and the stiffness 0, as always, but the posture unchanged (`StandInit`, `StandZero`) instead of `Crouch`. The cause is the posture family ([naoqi-fidelity.md](naoqi-fidelity.md), "the posture family sometimes reads a standing robot as lying"): an animation (here the dialog's "let's go") can leave the family on `LyingBack` or `LyingBelly`, and Life then takes the stiffness off without crouching (0.1 s, against 5.3 s to Crouch from `Standing`). No fall is detected. The misreading comes from the sim's missing DCM; a NAO 2.1 does not misread the same gestures. The scenario checks the rest (not awake, stiffness off), not the posture.
 - The live tests that move joints wake the robot first.
 
@@ -150,7 +150,7 @@ Measured the same day, and settled:
 
 Deferred:
 
-4. ~~A config field for Life at boot.~~ Settled Nov 25, 2026: the `robot` block, "The state at boot".
+4. ~~A config field for Life at boot.~~ Settled Nov 25, 2026: the `setup` block, "The state at boot".
 5. The double-tap trigger on 2.8.
 6. A NAO 6's behaviour is judged from its public image: none at hand.
 7. What a NAO does at boot with Life off (posture, stiffness): never watched, it takes a reboot of the real robot.

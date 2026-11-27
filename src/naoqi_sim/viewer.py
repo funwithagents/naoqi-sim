@@ -32,8 +32,9 @@ def viewer_config(settings: ViewerSettings, url: str) -> Any:
         import naoqi_viewer
     except ImportError:
         raise MissingExtraError(
-            "this config needs the viewer (a window, or the render camera): "
-            "depend on `naoqi-sim[viewer]` instead of `naoqi-sim`, or set viewer.headless to true"
+            "this config needs the viewer (a window, or the render camera): install "
+            "naoqi-sim with its `viewer` extra (`naoqi-sim[viewer]`), or run without it "
+            "(no --viewer; in a config file, viewer.headless true and no camera on 'render')"
         ) from None
     try:
         return naoqi_viewer.NaoqiViewerConfig(

@@ -43,8 +43,9 @@ def _cv2() -> Any:
         import cv2
     except ImportError:
         raise MissingExtraError(
-            "a webcam source needs OpenCV: depend on `naoqi-sim[webcam]` instead of "
-            "`naoqi-sim`, or set the camera's source to 'render' or 'none'"
+            "a webcam source needs OpenCV: install naoqi-sim with its `webcam` extra "
+            "(`naoqi-sim[webcam]`), or run without it (no --webcam; in a config file, the "
+            "camera's source 'render' or 'none')"
         ) from None
     return cv2
 

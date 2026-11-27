@@ -16,6 +16,7 @@ from naoqi_sim.config import (
     NaoqiSimConfig,
     PerceptionSettings,
     RobotSettings,
+    SetupSettings,
     SpeechRecognitionSettings,
 )
 from naoqi_sim.errors import DockerUnavailableError, NaoqiSimError
@@ -115,8 +116,11 @@ def test_both_need_docker(docker):
 
 def test_the_services_and_environment_follow_the_engines_switches():
     on = NaoqiSimConfig(naoqi=NaoqiSettings(version="2.8"))
-    off = NaoqiSimConfig(perception=PerceptionSettings(enabled=False))
-    deaf = NaoqiSimConfig(speech_recognition=SpeechRecognitionSettings(enabled=False))
+    on_21 = NaoqiSettings(version="2.1")
+    off = NaoqiSimConfig(naoqi=on_21, perception=PerceptionSettings(enabled=False))
+    deaf = NaoqiSimConfig(
+        naoqi=on_21, speech_recognition=SpeechRecognitionSettings(enabled=False)
+    )
     assert stack.services(on) == ["tts", "perception", "asr", "naoqi28"]
     assert stack.services(off) == ["tts", "asr", "naoqi21"]
     assert stack.services(deaf) == ["tts", "perception", "naoqi21"]
@@ -129,8 +133,9 @@ def test_the_services_and_environment_follow_the_engines_switches():
     )
 
 
-def test_the_robot_block_reaches_the_entrypoint():
-    default = stack.compose_env(NaoqiSimConfig())
+def test_the_setup_block_reaches_the_entrypoint():
+    on_21 = NaoqiSettings(version="2.1")
+    default = stack.compose_env(NaoqiSimConfig(naoqi=on_21))
     assert (
         default["NAOQI_SIM_ROBOT_POSTURE"],
         default["NAOQI_SIM_ROBOT_STIFFNESS"],
@@ -138,7 +143,8 @@ def test_the_robot_block_reaches_the_entrypoint():
     ) == ("crouch", "off", "off")
     life = stack.compose_env(
         NaoqiSimConfig(
-            robot=RobotSettings(posture="stand", stiffness_on=True, life_on=True)
+            naoqi=on_21,
+            setup=SetupSettings(posture="stand", stiffness_on=True, life_on=True),
         )
     )
     assert (
@@ -146,6 +152,23 @@ def test_the_robot_block_reaches_the_entrypoint():
         life["NAOQI_SIM_ROBOT_STIFFNESS"],
         life["NAOQI_SIM_ROBOT_LIFE"],
     ) == ("stand", "on", "on")
+
+
+@pytest.mark.parametrize(
+    ("naoqi", "robot", "runs"),
+    [
+        ("2.1", RobotSettings(), ("nao", "v5")),
+        ("2.1", RobotSettings(version="v4"), ("nao", "v4")),
+        ("2.8", RobotSettings(), ("nao", "v6")),
+    ],
+)
+def test_the_robot_reaches_the_entrypoint_with_its_defaults_filled_in(
+    naoqi, robot, runs
+):
+    env = stack.compose_env(
+        NaoqiSimConfig(naoqi=NaoqiSettings(version=naoqi), robot=robot)
+    )
+    assert (env["NAOQI_SIM_ROBOT_TYPE"], env["NAOQI_SIM_ROBOT_VERSION"]) == runs
 
 
 def test_a_status_without_an_engines_key_reads_none(monkeypatch):

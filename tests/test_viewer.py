@@ -15,6 +15,7 @@ from naoqi_sim import viewer
 from naoqi_sim.config import (
     CameraSettings,
     ConfigError,
+    NaoqiSettings,
     NaoqiSimConfig,
     VideoInputSettings,
     ViewerSettings,
@@ -36,6 +37,7 @@ from naoqi_sim.errors import MissingExtraError
 def test_which_configs_need_the_viewer(headless, source, needed):
     top, bottom = source
     config = NaoqiSimConfig(
+        naoqi=NaoqiSettings(version="2.1"),
         viewer=ViewerSettings(headless=headless),
         video_input=VideoInputSettings(
             top=CameraSettings(source=top), bottom=CameraSettings(source=bottom)
@@ -60,7 +62,7 @@ def test_the_viewer_runs_in_sim_mode_on_naoqi_sims_naoqi():
 
 def test_the_window_shows_the_cameras_when_asked():
     config = viewer.viewer_config(
-        ViewerSettings(cameras_display=True), "tcp://127.0.0.1:9559"
+        ViewerSettings(headless=False, cameras_display=True), "tcp://127.0.0.1:9559"
     )
     assert config.cameras_display and not config.headless
 
@@ -210,6 +212,6 @@ def test_sim_props_pass_world_positions_through_and_convert_robot_ones():
 
 def test_the_window_shows_the_people_when_asked():
     config = viewer.viewer_config(
-        ViewerSettings(people_display=True), "tcp://127.0.0.1:9559"
+        ViewerSettings(headless=False, people_display=True), "tcp://127.0.0.1:9559"
     )
     assert config.people_display and not config.cameras_display

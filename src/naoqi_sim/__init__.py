@@ -1,4 +1,4 @@
-"""naoqi-sim: a NAO in a box. The front door re-exports what a caller needs (specs/runtime/api.md)."""
+"""naoqi-sim: a simulated NAOqi robot. The front door re-exports what a caller needs (specs/runtime/api.md)."""
 
 from naoqi_sim.audio_input import FakeAudioSource, Take
 from naoqi_sim.audio_output import (
@@ -25,6 +25,7 @@ from naoqi_sim.config import (
     PerceptionSettings,
     RobotPosture,
     RobotSettings,
+    SetupSettings,
     SpeechRecognitionSettings,
     VideoInputSettings,
     VideoInputSource,
@@ -94,6 +95,7 @@ __all__ = [
     "PortInUseError",
     "RobotPosture",
     "RobotSettings",
+    "SetupSettings",
     "SpeechRecognitionSettings",
     "StackStatus",
     "Take",

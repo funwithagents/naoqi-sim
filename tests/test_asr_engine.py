@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from naoqi_sim.config import LANGUAGES, SPEECH_LANGUAGES, RobotSettings
+from naoqi_sim.config import LANGUAGES, SPEECH_LANGUAGES, SetupSettings
 
 _ENGINE = Path(__file__).resolve().parent.parent / "docker" / "asr-engine"
 
@@ -109,7 +109,7 @@ def test_each_language_pack_has_a_recognition_model():
     assert (
         server.MODELS["Portuguese"] == server.MODELS["Brazilian"]
     )  # no model of its own
-    assert server.DEFAULT_LANGUAGES == RobotSettings().available_languages
+    assert server.DEFAULT_LANGUAGES == SetupSettings().available_languages
 
 
 def test_the_installed_languages_are_named_once_each_and_need_a_model():

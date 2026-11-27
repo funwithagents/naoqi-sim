@@ -58,7 +58,7 @@ def image_data(tmp_path, monkeypatch) -> Path:
 
 
 def build(*versions: str, image_data: Path) -> None:
-    asyncio.run(fetch_and_build_images(versions or None, image_data=image_data))
+    asyncio.run(fetch_and_build_images(versions, image_data=image_data))
 
 
 def test_the_build_reads_the_image_data_from_the_folder_it_was_fetched_into(
@@ -96,13 +96,13 @@ def test_built_and_verified_images_pass_the_check(docker, image_data):
     assert docker.read()["containers"] == {}
     # 2.8 was not asked for: it is neither built nor verified.
     with pytest.raises(
-        ImagesMissingError, match="naoqi-sim fetch-and-build-images 2.8"
+        ImagesMissingError, match="naoqi-sim fetch-and-build-images --naoqi 2.8"
     ):
         check_images("2.8", image_data)
 
 
-def test_no_versions_means_all_of_them(docker, image_data):
-    build(image_data=image_data)
+def test_several_versions_are_built_in_turn_and_none_is_refused(docker, image_data):
+    build("2.1", "2.8", image_data=image_data)
     check_images("2.1", image_data)
     check_images("2.8", image_data)
     assert any(
@@ -111,6 +111,11 @@ def test_no_versions_means_all_of_them(docker, image_data):
     assert any(
         "--profile 2.8 build tts perception asr naoqi28" in c for c in docker.calls
     )
+    # a version is gigabytes: no version named builds nothing, rather than all of them
+    before = len(docker.calls)
+    with pytest.raises(ValueError, match=r"name the NAOqi version\(s\)"):
+        build(image_data=image_data)
+    assert len(docker.calls) == before
 
 
 def test_an_image_that_does_not_boot_is_not_verified(docker, image_data):
@@ -317,7 +322,7 @@ def test_images_from_another_naoqi_sim_version_are_outdated(
 def test_missing_images_name_the_command_to_run(docker, image_data):
     with pytest.raises(
         ImagesMissingError,
-        match=r"is not built: run `naoqi-sim fetch-and-build-images 2\.1`",
+        match=r"is not built: run `naoqi-sim fetch-and-build-images --naoqi 2\.1`",
     ):
         check_images("2.1", image_data)
 
@@ -351,13 +356,46 @@ def test_an_unknown_version_is_refused(docker, image_data):
 
 
 def test_the_command_reports_failures_and_exit_codes(docker, image_data, capsys):
-    assert main(["fetch-and-build-images", "2.1", "--image-data", str(image_data)]) == 0
+    assert (
+        main(
+            [
+                "fetch-and-build-images",
+                "--naoqi",
+                "2.1",
+                "--image-data",
+                str(image_data),
+            ]
+        )
+        == 0
+    )
     check_images("2.1", image_data)
 
     docker.set(build_fails=True)
-    assert main(["fetch-and-build-images", "2.1", "--image-data", str(image_data)]) == 1
+    assert (
+        main(
+            [
+                "fetch-and-build-images",
+                "--naoqi",
+                "2.1",
+                "--image-data",
+                str(image_data),
+            ]
+        )
+        == 1
+    )
     assert "error: docker compose build failed" in capsys.readouterr().err
 
     with pytest.raises(SystemExit) as exit_:
-        main(["fetch-and-build-images", "3.0", "--image-data", str(image_data)])
+        main(
+            [
+                "fetch-and-build-images",
+                "--naoqi",
+                "3.0",
+                "--image-data",
+                str(image_data),
+            ]
+        )
     assert exit_.value.code == 2
+    with pytest.raises(SystemExit) as no_version:  # the version is required
+        main(["fetch-and-build-images", "--image-data", str(image_data)])
+    assert no_version.value.code == 2

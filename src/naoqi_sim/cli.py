@@ -1,12 +1,15 @@
 """The `naoqi-sim` command: a thin shell over the library, which owns every check and step
 (specs/runtime/cli.md).
 
-A `ConfigError` prints its message and exits 2, as do argument errors (argparse); any other
-`NaoqiSimError` exits 1. `run` exits 0 once Ctrl-C (or SIGTERM) has stopped the robot.
+`run` and `config` take the same description of the robot: either the robot options (`--naoqi`,
+required, and what to turn on) or a `--config` file, never both. A `ConfigError` prints its message
+and exits 2, as do argument errors (argparse); any other `NaoqiSimError` exits 1. `run` exits 0
+once Ctrl-C (or SIGTERM) has stopped the robot.
 """
 
 import argparse
 import asyncio
+import json
 import logging
 import signal
 import sys
@@ -14,13 +17,115 @@ from collections.abc import Callable
 from pathlib import Path
 
 from naoqi_sim import docker_images, stack
-from naoqi_sim.config import ConfigError, NaoqiSimConfig
-from naoqi_sim.errors import NaoqiSimError
+from naoqi_sim.config import ROBOTS, ConfigError, NaoqiSimConfig
+from naoqi_sim.errors import MissingExtraError, NaoqiSimError
 from naoqi_sim.sim import NaoqiSim
+
+# The robot options of `run` and `config`, as argparse destinations with the option each is.
+_ROBOT_OPTIONS = {
+    "naoqi": "--naoqi",
+    "robot": "--robot",
+    "robot_version": "--robot-version",
+    "viewer": "--viewer",
+    "webcam": "--webcam",
+    "mic": "--mic",
+    "controls": "--controls",
+}
+
+
+def _add_robot_options(command: argparse.ArgumentParser) -> None:
+    """What describes the robot, on `run` and `config` alike."""
+    robots = sorted({kind for pairs in ROBOTS.values() for kind, _ in pairs})
+    versions = sorted({version for pairs in ROBOTS.values() for _, version in pairs})
+    described = command.add_argument_group(
+        "the robot",
+        "Either --naoqi and what to turn on, or a --config file for anything else "
+        "(`naoqi-sim config` prints one to start from).",
+    )
+    described.add_argument(
+        "--naoqi",
+        metavar="VERSION",
+        help=f"the NAOqi version to run: {', '.join(ROBOTS)} (required without --config)",
+    )
+    described.add_argument(
+        "--robot",
+        metavar="TYPE",
+        help=f"the robot: {', '.join(robots)} (default: the NAOqi version's)",
+    )
+    described.add_argument(
+        "--robot-version",
+        metavar="VERSION",
+        help=f"the robot's version: {', '.join(versions)} "
+        "(default: the NAOqi version's, v5 on 2.1 and v6 on 2.8)",
+    )
+    described.add_argument(
+        "--viewer",
+        action="store_true",
+        help="open the sim window and feed the robot's cameras its render "
+        "(needs the `viewer` extra)",
+    )
+    described.add_argument(
+        "--webcam",
+        action="store_true",
+        help="feed the robot's top camera your webcam (needs the `webcam` extra)",
+    )
+    described.add_argument(
+        "--mic", action="store_true", help="let the robot hear your microphone"
+    )
+    described.add_argument(
+        "--controls",
+        action="store_true",
+        help="serve the controls page and open it in your browser",
+    )
+    described.add_argument(
+        "--config",
+        type=Path,
+        metavar="FILE",
+        help="a NaoqiSimConfig JSON file, instead of the options above",
+    )
+
+
+def _config(ap: argparse.ArgumentParser, a: argparse.Namespace) -> NaoqiSimConfig:
+    """The config `run` and `config` were asked for: the file's, or the robot options'."""
+    given = [option for dest, option in _ROBOT_OPTIONS.items() if getattr(a, dest)]
+    if a.config:
+        if given:
+            ap.error(
+                f"--config describes the whole robot: drop {', '.join(given)}, "
+                "or set them in the file"
+            )
+        return NaoqiSimConfig.from_json_file(a.config)
+    if not a.naoqi:
+        ap.error(
+            f"which NAOqi? --naoqi {' or --naoqi '.join(ROBOTS)} "
+            "(or --config FILE for a config of your own)"
+        )
+    robot = {"type": a.robot, "version": a.robot_version}
+    data: dict[str, object] = {
+        "naoqi": {"version": a.naoqi},
+        "robot": {key: value for key, value in robot.items() if value},
+    }
+    cameras = {}
+    if a.viewer:
+        data["viewer"] = {
+            "headless": False,
+            "cameras_display": True,
+            "people_display": True,
+        }
+        cameras = {"top": {"source": "render"}, "bottom": {"source": "render"}}
+    if a.webcam:
+        cameras["top"] = {"source": "webcam"}
+    if cameras:
+        data["video_input"] = cameras
+    if a.mic:
+        data["audio_input"] = {"source": "mic"}
+    if a.controls:
+        data["controls"] = {"enabled": True, "open": True}
+    return NaoqiSimConfig.from_dict(data)
 
 
 def _parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="naoqi-sim", description="A NAO in a box.")
+    ap = argparse.ArgumentParser(prog="naoqi-sim", description="A simulated NAOqi robot on your computer.")
     ap.add_argument("--verbose", action="store_true", help="debug logging")
     commands = ap.add_subparsers(dest="command", required=True)
     build = commands.add_parser(
@@ -29,14 +134,17 @@ def _parser() -> argparse.ArgumentParser:
         description="Fetch the pinned Choregraphe suite and the robot's animations package "
         "(Aldebaran's software, from Aldebaran's GitHub repositories, hash-checked), build "
         "the NAOqi image and the engines' images (speech, perception, speech recognition), "
-        "and verify they boot. Run once before starting naoqi-sim, "
-        "and again after changing docker/.",
+        "and verify they boot. Run once per NAOqi version before starting naoqi-sim, "
+        "and again after upgrading it.",
     )
     build.add_argument(
-        "versions",
-        nargs="*",
+        "--naoqi",
+        dest="versions",
+        nargs="+",
+        required=True,
         metavar="VERSION",
-        help=f"{', '.join(docker_images.IMAGES)} (default: all)",
+        help=f"the NAOqi version(s) to fetch and build: {', '.join(docker_images.IMAGES)}; "
+        "each is gigabytes of downloads and images, so name only those you run",
     )
     build.add_argument(
         "--image-data",
@@ -47,10 +155,38 @@ def _parser() -> argparse.ArgumentParser:
     run = commands.add_parser(
         "run",
         help="run a simulated NAO in the foreground, until Ctrl-C",
-        description="Start the simulated NAO the config file describes (no file: the "
-        "defaults, NAOqi 2.1 with the sim window) and keep it running until Ctrl-C.",
+        description="Start a simulated NAO and keep it running until Ctrl-C: the robot of "
+        "the NAOqi version you name, speaking on your loudspeaker, with what you turn on.",
     )
-    run.add_argument("--config", type=Path, help="a NaoqiSimConfig JSON file")
+    _add_robot_options(run)
+    config = commands.add_parser(
+        "config",
+        help="print the config of a robot, to start a config file of your own",
+        description="Print, as JSON with every field, the config `naoqi-sim run` would run "
+        "with the same options: redirect it to a file, change it, and run it with "
+        "`naoqi-sim run --config FILE`. Starts nothing.",
+    )
+    _add_robot_options(config)
+    meshes = commands.add_parser(
+        "fetch-meshes",
+        help="install Aldebaran's NAO meshes for the sim window, after a license prompt",
+        description="Install Aldebaran's NAO meshes, so the sim window shows the real robot "
+        "instead of placeholder shapes. They are under CC BY-NC-ND 4.0 (non-commercial): "
+        "the license is shown and nothing is installed until you type `yes`. Optional, once "
+        "per machine; this is naoqi-viewer's own `fetch-meshes` (needs the `viewer` extra).",
+    )
+    meshes.add_argument(
+        "--archive",
+        type=Path,
+        metavar="PATH",
+        help="a local copy of the naoqi-meshes archive (checked like a download)",
+    )
+    meshes.add_argument(
+        "--force", action="store_true", help="install again even if already installed"
+    )
+    meshes.add_argument(
+        "--remove", action="store_true", help="delete the installed meshes instead"
+    )
     commands.add_parser(
         "status",
         help="the containers and the robot's state; exits 0 when it is ready",
@@ -110,6 +246,26 @@ def _route_signals(
             loop.remove_signal_handler(sig)
 
     return restore
+
+
+def _fetch_meshes(a: argparse.Namespace) -> int:
+    """naoqi-viewer's own `fetch-meshes`, which owns the license prompt, the download and the
+    install: the meshes never pass through naoqi-sim (specs/host/viewer.md)."""
+    try:
+        from naoqi_viewer import cli as viewer_cli
+    except ImportError:
+        raise MissingExtraError(
+            "the meshes are the sim window's: install naoqi-sim with its `viewer` extra "
+            "(`naoqi-sim[viewer]`) first"
+        ) from None
+    argv = ["fetch-meshes"]
+    if a.archive:
+        argv += ["--archive", str(a.archive)]
+    if a.force:
+        argv.append("--force")
+    if a.remove:
+        argv.append("--remove")
+    return viewer_cli.main(argv)
 
 
 async def _run(sim: NaoqiSim) -> int:
@@ -187,12 +343,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         elif a.command == "run":
-            config = (
-                NaoqiSimConfig.from_json_file(a.config)
-                if a.config
-                else NaoqiSimConfig()
-            )
-            return asyncio.run(_run(NaoqiSim(config)))
+            return asyncio.run(_run(NaoqiSim(_config(ap, a))))
+        elif a.command == "config":
+            print(json.dumps(_config(ap, a).to_dict(), indent=2))
+        elif a.command == "fetch-meshes":
+            return _fetch_meshes(a)
         elif a.command == "status":
             status = asyncio.run(stack.read_status())
             _print_status(status)

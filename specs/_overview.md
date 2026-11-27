@@ -1,6 +1,6 @@
 # naoqi-sim — Overview
 
-naoqi-sim is a NAO in a box. NAOqi (`naoqi-bin` from the user's own Choregraphe suite, 2.1.4.13 or 2.8.7.4) runs in a local Docker container, and override modules loaded inside it replace the services a desktop virtual robot lacks, so the container behaves like a NAO in its API on `127.0.0.1:9559`. Any qi client (Choregraphe, existing scripts, client libraries) connects to it exactly as it would to a NAO, with no naoqi-sim-specific code.
+naoqi-sim is a simulated NAOqi robot, today a NAO. NAOqi (`naoqi-bin` from the user's own Choregraphe suite, 2.1.4.13 or 2.8.7.4) runs in a local Docker container, and override modules loaded inside it replace the services a desktop virtual robot lacks, so the container behaves like a NAO in its API on `127.0.0.1:9559`. Any qi client (Choregraphe, existing scripts, client libraries) connects to it exactly as it would to a NAO, with no naoqi-sim-specific code.
 
 It is unofficial and Apache-2.0-licensed, not affiliated with Aldebaran, and ships no Aldebaran assets.
 
@@ -182,7 +182,7 @@ Specified in [cli.md](runtime/cli.md).
 
 | Command | Purpose |
 | --- | --- |
-| `naoqi-sim fetch-and-build-images [2.1] [2.8]` | Fetch the image data, build and verify the images: the one slow step, before `run` ([api.md](runtime/api.md), "Images") |
+| `naoqi-sim fetch-and-build-images --naoqi VERSION [VERSION]` | Fetch the image data, build and verify the images: the one slow step, before `run` ([api.md](runtime/api.md), "Images") |
 | `naoqi-sim run [--config FILE]` | Load a `NaoqiSimConfig` ([config.md](runtime/config.md); none: the defaults), start a `NaoqiSim` ([api.md](runtime/api.md)) and stay in the foreground until Ctrl-C, which stops everything |
 | `naoqi-sim cleanup` | Remove the containers a run that died without stopping left behind |
 | `naoqi-sim status` / `naoqi-sim logs` | Health of the containers, the overrides and the host link |

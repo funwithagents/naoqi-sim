@@ -90,6 +90,8 @@ FAKE_NAOQI_BIN = textwrap.dedent(
     echo "${NAOQI_SIM_PYTHON_MODULES:-unset}" > "$FAKE_DIR/naoqi-bin.modules"
     echo "${NAOQI_SIM_MODULES_DIR:-unset}" > "$FAKE_DIR/naoqi-bin.modules-dir"
     echo "${NAOQI_SIM_LOOPBACK_9559:-unset}" > "$FAKE_DIR/naoqi-bin.loopback"
+    echo "${NAOQI_SIM_ROBOT_MODEL_FILE:-unset}" > "$FAKE_DIR/naoqi-bin.model-file"
+    cat "$NAOQI_HOME/etc/naoqi/ALRobotModel.xml" > "$FAKE_DIR/naoqi-bin.model-preference"
     [ -n "${FAKE_NAOQI_EXIT:-}" ] && exit "$FAKE_NAOQI_EXIT"
     trap 'exit 0' TERM INT
     while :; do sleep 0.1; done
@@ -123,6 +125,15 @@ FAKE_HOSTNAME = textwrap.dedent(
 LOOPBACK_RULE = (
     "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport 9559 -j REDIRECT --to-ports 9558"
 )
+
+# The suites' model preference (2.8's names Pepper's model) and the model files both suites have
+# between them (specs/container/container.md, "The robot model").
+MODEL_PREFERENCE = (
+    '<?xml version="1.0" encoding="UTF-8" ?>\n<ModulePreference>\n'
+    '  <Preference name="model" description="file used to describe the model" '
+    'value="JULIETTEY20B2C.xml" type="string" />\n</ModulePreference>\n'
+)
+MODEL_FILES = ("NAOH25V40.xml", "NAOH25V50.xml", "NAOH25V60.xml")
 
 # A suite autoload with every entry either version's entrypoint edits.
 AUTOLOAD = (
@@ -304,6 +315,13 @@ class Fakes:
         self.autoload = self.naoqi_home / "etc" / "naoqi" / "autoload.ini"
         self.autoload.parent.mkdir(parents=True)
         self.autoload.write_text(AUTOLOAD)
+        # NAOqi's model preference, as the suite ships it, and the model files it may name
+        self.model = self.naoqi_home / "etc" / "naoqi" / "ALRobotModel.xml"
+        self.model.write_text(MODEL_PREFERENCE)
+        self.models = self.naoqi_home / "share" / "alrobotmodel" / "models"
+        self.models.mkdir(parents=True)
+        for name in MODEL_FILES:
+            (self.models / name).write_text("<ModulePreference/>")
         self.tmp = tmp_path / "tmp"
         self.tmp.mkdir()
 
@@ -329,7 +347,8 @@ class Fakes:
 
     def naoqi_bin(self, what: str) -> str:
         """What naoqi-bin got: its arguments (`args`), or the environment it and naoqi-service
-        inherit (`port`, `modules`, `modules-dir`, `loopback`)."""
+        inherit (`port`, `modules`, `modules-dir`, `loopback`, `model-file`), or the model
+        preference it found at its start (`model-preference`)."""
         return (self.dir / f"naoqi-bin.{what}").read_text().strip()
 
     def iptables(self) -> list[str]:
@@ -742,3 +761,65 @@ def test_2_8_healthcheck_goes_through_the_gateway_on_the_containers_address(
         subprocess.run(["bash", str(HEALTHCHECK)], env=env, check=False).returncode == 0
     )
     assert fakes.calls() == [f"call NaoqiSim.isReady --qi-url {url}"]
+
+
+@pytest.mark.parametrize(
+    ("version", "robot", "file"),
+    [
+        ("2.1", {}, "NAOH25V50.xml"),  # each NAOqi's default robot
+        ("2.8", {}, "NAOH25V60.xml"),
+        (
+            "2.1",
+            {"NAOQI_SIM_ROBOT_TYPE": "", "NAOQI_SIM_ROBOT_VERSION": ""},
+            "NAOH25V50.xml",
+        ),
+        (
+            "2.1",
+            {"NAOQI_SIM_ROBOT_TYPE": "nao", "NAOQI_SIM_ROBOT_VERSION": "v4"},
+            "NAOH25V40.xml",
+        ),
+        (
+            "2.8",
+            {"NAOQI_SIM_ROBOT_TYPE": "nao", "NAOQI_SIM_ROBOT_VERSION": "v6"},
+            "NAOH25V60.xml",
+        ),
+    ],
+)
+def test_naoqi_starts_as_the_configs_robot(tmp_path, version, robot, file):
+    fakes = Fakes(tmp_path)
+    entrypoint = Entrypoint(fakes, version, robot)
+    try:
+        entrypoint.wait_for_ready()
+    finally:
+        entrypoint.stop()
+    # NAOqi found its preference naming the robot's model file, and nothing else changed in it
+    assert fakes.naoqi_bin("model-preference") == MODEL_PREFERENCE.strip().replace(
+        "JULIETTEY20B2C.xml", file
+    )
+    # the status module is told the file, whose keys it publishes
+    assert fakes.naoqi_bin("model-file") == str(fakes.models / file)
+    assert f"({file})" in entrypoint.output()
+
+
+@pytest.mark.parametrize(
+    ("robot", "why"),
+    [
+        ({"NAOQI_SIM_ROBOT_TYPE": "pepper"}, "unknown robot: pepper v5"),
+        ({"NAOQI_SIM_ROBOT_VERSION": "v7"}, "unknown robot: nao v7"),
+    ],
+)
+def test_an_unknown_robot_fails_the_boot_before_naoqi_starts(tmp_path, robot, why):
+    fakes = Fakes(tmp_path)
+    entrypoint = Entrypoint(fakes, "2.1", robot)
+    assert entrypoint.proc.wait(timeout=10) == 1
+    assert why in entrypoint.output()
+    assert not fakes.started_naoqi()
+
+
+def test_a_robot_the_suite_has_no_model_of_fails_the_boot(tmp_path):
+    fakes = Fakes(tmp_path)
+    (fakes.models / "NAOH25V60.xml").unlink()
+    entrypoint = Entrypoint(fakes, "2.8")
+    assert entrypoint.proc.wait(timeout=10) == 1
+    assert "no model file NAOH25V60.xml" in entrypoint.output()
+    assert not fakes.started_naoqi()

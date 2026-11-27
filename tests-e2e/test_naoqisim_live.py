@@ -116,7 +116,10 @@ def test_the_sim_window(nao):
     if nao.version.name != "2.1":
         pytest.skip("the window does not depend on the NAOqi version: checked on 2.1")
     window = NaoqiSim(
-        live_config(nao.version.name, viewer=ViewerSettings(variant="placeholder")),
+        live_config(
+            nao.version.name,
+            viewer=ViewerSettings(headless=False, variant="placeholder"),
+        ),
         sink=MemorySink(),
     )
     nao.stop()

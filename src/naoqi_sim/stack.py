@@ -79,24 +79,27 @@ def services(config: NaoqiSimConfig) -> list[str]:
 
 def languages(config: NaoqiSimConfig) -> list[str]:
     """The robot's available languages, its language at boot first."""
-    robot = config.robot
-    return [robot.language] + [
-        name for name in robot.available_languages if name != robot.language
+    setup = config.setup
+    return [setup.language] + [
+        name for name in setup.available_languages if name != setup.language
     ]
 
 
 def compose_env(config: NaoqiSimConfig) -> dict[str, str]:
     """The environment every compose call of a run gets, from the config: the installed
-    languages, the robot's state at boot, and the perception and speech recognition engines' URLs, each empty when its
+    languages, which robot it is, its state at boot, and the perception and speech recognition engines' URLs, each empty when its
     engine is off so the NAOqi modules reach none (compose keeps an empty value as is)."""
     return {
         **files.compose_env(),
         # The robot's language packs, its language at boot first (the containers read it there)
         "NAOQI_SIM_LANGUAGES": ",".join(languages(config)),
         # The robot's state when the sim is ready, which the NAOqi entrypoint brings it to.
-        "NAOQI_SIM_ROBOT_POSTURE": config.robot.posture,
-        "NAOQI_SIM_ROBOT_STIFFNESS": "on" if config.robot.stiffness_on else "off",
-        "NAOQI_SIM_ROBOT_LIFE": "on" if config.robot.life_on else "off",
+        "NAOQI_SIM_ROBOT_POSTURE": config.setup.posture,
+        "NAOQI_SIM_ROBOT_STIFFNESS": "on" if config.setup.stiffness_on else "off",
+        "NAOQI_SIM_ROBOT_LIFE": "on" if config.setup.life_on else "off",
+        # Which robot the NAOqi runs: the entrypoint picks the suite's model file from them.
+        "NAOQI_SIM_ROBOT_TYPE": config.robot.type or "",
+        "NAOQI_SIM_ROBOT_VERSION": config.robot.version or "",
         "NAOQI_SIM_PERCEPTION_URL": docker_images.PERCEPTION_URL
         if config.perception.enabled
         else "",

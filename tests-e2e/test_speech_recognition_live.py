@@ -15,7 +15,7 @@ from conftest import live_config
 from support import recorded_sentences, say_to_the_robot
 
 from naoqi_sim import NaoqiSim
-from naoqi_sim.config import RobotSettings
+from naoqi_sim.config import SetupSettings
 
 SUBSCRIBER = "test_speech_recognition_live"
 STATUS = "ALSpeechRecognition/Status"
@@ -433,7 +433,7 @@ def test_a_sim_that_boots_in_german_speaks_hears_and_talks_german(nao, tmp_path:
     nao.sim = NaoqiSim(
         live_config(
             nao.version.name,
-            robot=RobotSettings(
+            setup=SetupSettings(
                 available_languages=("German", "English"), language="German"
             ),
         ),
