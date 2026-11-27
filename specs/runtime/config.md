@@ -12,7 +12,7 @@ tests:
 
 # Configuration
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
@@ -200,7 +200,7 @@ class ControlsSettings:
 - **Type and version are two fields** because they are two things: a NAO is a V4, a V5 or a V6, another robot type has versions of its own. They are also how NAOqi itself names a robot (`RobotConfig/Body/Type`, `RobotConfig/Body/Version`), which is what the sim publishes for the robot chosen ([status-service.md](../container/status-service.md), "The robot's keys").
 - **Each one left out takes its default from the NAOqi version**: the type the default robot's, the version that type's first in the row. `NaoqiSimConfig` fills them in when it is built, so `config.robot` always names both, and so does the JSON `to_dict()` gives (and `naoqi-sim config` prints).
 - **The real pairs only.** A robot outside its NAOqi's row is refused at load, on `robot.type` or `robot.version`, naming the row: `robot.version: NAOqi 2.8 does not run a nao v5; it runs: nao v6`. The 2.8 suite does ship a NAO V5 model file; no NAO V5 ever ran NAOqi 2.8, so the sim does not either.
-- **What the choice changes**: the model file NAOqi loads and the robot's ALMemory keys ([container.md](../container/container.md), "The robot model"). The window shows naoqi-viewer's one NAO model whatever the robot ([viewer.md](../host/viewer.md), open questions).
+- **What the choice changes**: the model file NAOqi loads and the robot's ALMemory keys; between a NAO V4 and a V5 on 2.1, the versions `ALMotion` reports and a few masses, the joints, their limits and the cameras being the same ([container.md](../container/container.md), "The robot model"). The window shows naoqi-viewer's one NAO model whatever the robot ([viewer.md](../host/viewer.md), open questions).
 - **Made for a second robot type.** A Pepper on NAOqi 2.5 is one more row (`2.5`: `pepper`, its versions) and one more `RobotType`; the rules above do not change, and 2.8's row can take it too. What depends on the robot beyond its model (the touch sensors, the postures it can take, the stop gesture) is keyed on the NAOqi version today, which is the same thing while each version runs one type; it moves to this table with the second type.
 - `ROBOTS`, in `config.py`, is the table; the entrypoint maps a pair to its model file.
 

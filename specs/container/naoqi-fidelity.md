@@ -11,7 +11,7 @@ tests:
 
 # NAOqi fidelity
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 

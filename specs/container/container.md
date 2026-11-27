@@ -31,7 +31,7 @@ tests:
 
 # NAOqi container
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
@@ -173,7 +173,7 @@ Which robot a NAOqi is comes from one preference, `etc/naoqi/ALRobotModel.xml`, 
 - The two variables are the config's `robot` block ([config.md](../runtime/config.md), "The robot"), which `NaoqiSim.start()` passes through compose with its defaults filled in. Empty or unset (compose run by hand), the type is `nao` and the version the entrypoint's own default: `v5` on 2.1, `v6` on 2.8.
 - Which pairs a NAOqi version runs is the config's decision (the real pairs only: no NAO V5 on 2.8, though the 2.8 suite has its file). The entrypoint only refuses what it cannot do: a pair outside the table (`unknown robot: nao v7`) or a file the suite lacks (`this NAOqi has no nao v6: no model file NAOH25V60.xml`), each before NAOqi starts, with exit 1.
 - The entrypoint rewrites the preference's `value` in place (`/opt/naoqi` is the `nao` user's), logs `robot: nao v5 (NAOH25V50.xml)` and exports the file's path as `NAOQI_SIM_ROBOT_MODEL_FILE`, from which the status module publishes the robot's own ALMemory keys ([status-service.md](status-service.md), "The robot's keys").
-- A model file is a list of ALMemory keys with their values (`RobotConfig/Body/Type`, `RobotConfig/Body/Version`, the versions of the hands, the legs, the cameras...). The V4 and V5 files differ in those values only: both versions 4.0.0 against 5.0.0, the hands 4 against 7, the feet 1 against 3, the legs 2 against 7, and the V5's head colour and microphones version. What `ALMotion` makes of them (joint limits, masses) is not measured yet (open question 4).
+- A model file is a list of ALMemory keys with their values (`RobotConfig/Body/Type`, `RobotConfig/Body/Version`, the versions of the hands, the legs, the cameras...). The V4 and V5 files differ in those values only: both versions 4.0.0 against 5.0.0, the hands 4 against 7, the feet 1 against 3, the legs 2 against 7, and the V5's head colour and microphones version. What NAOqi 2.1 makes of them, measured Nov 27, 2026 by booting it as each: `ALMotion.getRobotConfig()` reports `VERSION_50` or `VERSION_40` for the body, the head and the arms; the 26 joints, their limits (`getLimits("Body")`) and both cameras' positions are the same; the masses differ on nine joints (the head yaw, both shoulder pitches, hip rolls, knee pitches and ankle rolls: 10 to 18 g each), 5.305 kg in all as a V5 against 5.195 kg as a V4. Both wake up and stand.
 - Until Nov 27, 2026 the model was fixed at build: 2.1 ran the suite's default, a NAO V4, and 2.8's Dockerfile switched Pepper's model to the NAO V6's.
 
 ### Network layout
@@ -267,4 +267,3 @@ Result: **54 passed, 6 skipped** (the audio loopback, which has no virtual sound
 1. **Docker Desktop.** Everything was measured on OrbStack and Linux's Docker Engine; Docker Desktop on macOS, Linux and Windows is still to confirm. GitHub's Windows runner has no Docker Desktop, but runs Linux containers in WSL 2, and the live tier passed there once against them ("Linux containers on GitHub's Windows runner", above); Docker Desktop itself is what users run, and is still to run.
 2. **Starting the stack.** `naoqi-sim run` and `cleanup` ([cli.md](../runtime/cli.md)) are not built; today it is `docker compose` by hand (see [README.md](../../README.md)). `NaoqiSim.start()` waits on the container's health rather than on the log line ([api.md](../runtime/api.md)).
 3. **2.1: services of robot packages on Docker Desktop.** A service a 2.1 package registers from its own process is reached from the host only where Docker routes the container's address ("Network layout"). Deferred: no 2.1 package in the image registers one, and a user's would need a relay on 9559, which 2.1's desktop suite does not have.
-4. **What a robot's version changes in NAOqi.** The V4 and V5 model files differ in the hardware versions they declare ("The robot model"); whether `ALMotion` reports other joint limits or masses for one than for the other, on 2.1, is to measure by booting each. Until then the documentation promises only what the files say: the robot's keys.

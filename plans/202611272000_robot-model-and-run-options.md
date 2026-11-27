@@ -1,6 +1,6 @@
 # The robot model, the setup block and the run options
 
-**Status:** In progress
+**Status:** Done
 
 Implements [config.md](../specs/runtime/config.md) ("The robot", the `setup` block, the required NAOqi version, the no-window default, "Example files"), [cli.md](../specs/runtime/cli.md) ("The robot options", "The `config` command"), [container.md](../specs/container/container.md) ("The robot model") and [status-service.md](../specs/container/status-service.md) ("The robot's keys"). It delivers a config that names its NAOqi version and its robot, a command line that runs the usual setups without a file, and a sim that is the robot the config names, in NAOqi's model and in ALMemory. It leaves out a model per robot in the window (naoqi-viewer's), a second robot type (Pepper), and the user documentation, which is written on top of it.
 
@@ -24,10 +24,10 @@ Implements [config.md](../specs/runtime/config.md) ("The robot", the `setup` blo
 2. Command line: the robot options, the options-or-file rule, `config`; the example files regenerated from it and tied to it by a test. Done.
 3. The build names its versions (`--naoqi`, required) and `fetch-meshes` hands over to naoqi-viewer. Done.
 4. Container: the compose variables, `robot_model` in both entrypoints, the status module's robot keys, the Dockerfile's switch removed. Done; fast tier (fake `naoqi-bin`, fake ALMemory).
-5. Rebuild both images (the recipes changed) and run the live tier on both versions. **To do**: the sims were in use.
-6. On the running sims, settle the two open questions: that publishing the robot's keys disturbs no NAOqi module ([status-service.md](../specs/container/status-service.md), open question 4), and what `ALMotion` reports on 2.1 as a V4 and as a V5 ([container.md](../specs/container/container.md), open question 4). The live tests are written (`tests-e2e/test_robot_model_live.py`: the robot's keys on each version, 2.1 booted as a NAO V4); the `ALMotion` comparison is **to do**.
-7. Flip the five specs from `Updated` to `Implemented`.
+5. Rebuilt both images and ran the live tier on both versions (Nov 27, 2026): 278 passed, 19 expected failures, 18 skipped, and one failure, a race in `test_the_launchpad_keys_follow_a_person_walking_in` on 2.1 (it read the last of the launchpad keys right after the first was written), fixed in the test and passing three times in a row since. Done.
+6. On the running sims: the robot's keys disturb no NAOqi module (the live tier passes with them, on a V5, a V6 and a V4 boot); as a V4 and as a V5, NAOqi 2.1 has the same joints, limits and camera positions, other reported versions and a few other masses ([container.md](../specs/container/container.md), "The robot model"). Live tests: `tests-e2e/test_robot_model_live.py`. Done.
+7. The five specs back from `Updated` to `Implemented`. Done.
 
 ## Verification
 
-`uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`, `uv run pytest` (all pass as of step 4), then `uv run naoqi-sim fetch-and-build-images` and `uv run pytest tests-e2e` on both versions. Mark this plan `Done` (here and in [_index.md](_index.md)) only once the live tier passes.
+`uv run ruff check .`, `uv run ruff format --check .`, `uv run pyright`, `uv run pytest` (all pass as of step 4), then `uv run naoqi-sim fetch-and-build-images` and `uv run pytest tests-e2e` on both versions. All passed on Nov 27, 2026, the live tier with the one test race above fixed.

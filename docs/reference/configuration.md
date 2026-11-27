@@ -58,7 +58,7 @@ A misspelt or unknown key, a wrong value or an impossible combination is refused
 | `type` | `"nao"` | The NAOqi version's robot | The robot's type |
 | `version` | `"v4"`, `"v5"`, `"v6"` | `"v5"` on NAOqi 2.1, `"v6"` on 2.8 | The robot's version |
 
-Each NAOqi version runs the robots that really ran it: 2.1 a NAO V5 or V4, 2.8 a NAO V6. Any other pair is refused. The robot chosen is the model NAOqi loads, and what its `RobotConfig/Body/Type` and `RobotConfig/Body/Version` keys say, as on a robot. The window draws the same NAO for all three.
+Each NAOqi version runs the robots that really ran it: 2.1 a NAO V5 or V4, 2.8 a NAO V6. Any other pair is refused. The robot chosen is the model NAOqi loads, and what its `RobotConfig/Body/Type` and `RobotConfig/Body/Version` keys say, as on a robot. On NAOqi 2.1, a V4 and a V5 have the same joints, limits and cameras; NAOqi reports another version and slightly different masses. The window draws the same NAO for all three.
 
 ## `setup`: how the robot is set up
 

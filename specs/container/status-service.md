@@ -14,11 +14,12 @@ tests:
   - tests/test_status_core.py
   - tests/test_entrypoint.py
   - tests-e2e/test_status_live.py
+  - tests-e2e/test_robot_model_live.py
 ---
 
 # NaoqiSim status service and healthcheck
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
@@ -77,7 +78,7 @@ A robot's NAOqi publishes what the robot is under `RobotConfig/` (`RobotConfig/B
 - These are the robot's own names, not `NaoqiSim/` ones: a client reads which robot it is on the same way on a NAO and on naoqi-sim, and `NaoqiSim/` stays for what only a simulator has. Nothing under `NaoqiSim/` repeats them.
 - **Everything the file lists**, not a chosen few: the hardware versions (`RobotConfig/Body/Device/Hand/Left/Version`, `.../Legs/Version`, `RobotConfig/Head/Device/Camera/Version`...), `RobotConfig/Body/SoftwareRequirement` and, on a V4 or V5, the file's placeholder identity: `RobotConfig/Head/HeadId` `0000`, `Device/DeviceList/ChestBoard/BodyId` `00000ALDR1008E000000` and `Device/DeviceList/ChestBoard/BodyNickName` `Nao0000` (the Get Body ID box reads the body id). The V6 file has no identity and no `BaseVersion`.
 - A commented-out entry is not published. Without the variable or the file (the module run outside the entrypoint), no robot key is published and the module loads all the same.
-- Written once, after NAOqi's own modules have loaded their model: whether any of them reacts to a key appearing is to confirm on the running sims (open question 4).
+- Written once, after NAOqi's own modules have loaded their model, and none of them reacts to the keys appearing: the live tier passes on both versions with them published (Nov 27, 2026), as a NAO V5, a V6 and, for a boot, a wake-up and a stand, a V4.
 
 ### Readiness
 
@@ -112,4 +113,3 @@ Both Dockerfiles declare it: `HEALTHCHECK --interval=5s --timeout=5s --start-per
 1. **Boot timing.** `NaoqiSim` does not publish how long boot took (`NaoqiSim/BootSeconds`); the capability probe would record it. Add when the probe exists.
 2. **A touch source.** Whether the touch input publishes `NaoqiSim/Touch/Source` ([touch-input.md](../host/touch-input.md), open question 2), which would extend this contract. (A device writes its source key back to `none` when it stops: [devices.md](../host/devices.md), "The device contract".)
 3. **`setReady` is public.** Any client can call it. Acceptable on a simulator; a hidden `_setReady` would first need the `ALModule` autobind behaviour for underscore names measured on 2.1.
-4. **The robot's keys on a running NAOqi.** That publishing them disturbs none of NAOqi's modules (the hardware versions are the candidates), on both versions; if one does, publish the identity keys only (`Type`, `Version`, `BaseVersion`).

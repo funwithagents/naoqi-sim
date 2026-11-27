@@ -36,8 +36,11 @@ def test_the_launchpad_keys_follow_a_person_walking_in(nao, life):
     wait_until(
         lambda: key(memory, L + "NoPeopleInZones") is True, 5.0, "nobody in zones"
     )
+    # the module writes its keys one after the other when Life starts, this one last
+    wait_until(
+        lambda: key(memory, L + "ZoneOfTrackedHuman") == 0, 5.0, "nobody tracked"
+    )
     assert key(memory, L + "PeopleNotSeen") is True
-    assert key(memory, L + "ZoneOfTrackedHuman") == 0
     camera_z = nao.service("ALMotion").getPosition("CameraTop", 2, True)[2]
     state = nao.sim.props.spawn("face", (2.0, 0.0, camera_z), frame="robot")
     wait_until(

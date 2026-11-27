@@ -11,7 +11,7 @@ tests:
 
 # CLI (`naoqi-sim`)
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
