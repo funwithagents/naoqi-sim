@@ -1,6 +1,7 @@
 """ALSpeechRecognition on a running naoqi-sim stack (specs/services/speech-recognition.md): sentences
 from tests-e2e/speech/ (a person's voice recorded on a NAO, committed) played into the fake room, recognised for a
-script's vocabulary and for a dialog topic loaded by hand, on both versions."""
+script's vocabulary and for a dialog topic loaded by hand, on both versions; and a sim that boots in
+German, a language whose voice and model are fetched on first use, heard and talked to in German."""
 
 import threading
 import time
@@ -10,7 +11,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from conftest import live_config
 from support import recorded_sentences, say_to_the_robot
+
+from naoqi_sim import NaoqiSim
+from naoqi_sim.config import RobotSettings
 
 SUBSCRIBER = "test_speech_recognition_live"
 STATUS = "ALSpeechRecognition/Status"
@@ -250,7 +255,7 @@ def test_french_is_recognised_in_french(nao, asr, events, sentences):
     assert set(asr.getAvailableLanguages()) == {
         "English",
         "French",
-    }  # German has no model
+    }  # the default config installs these two; German has a model but is not installed
     with pytest.raises(RuntimeError, match="does not support the following language"):
         asr.setLanguage("German")
     asr.setLanguage("French")
@@ -393,3 +398,93 @@ def test_the_status_names_the_engine(nao):
     assert memory.getData("NaoqiSim/SpeechRecognition/Source") == "engine"
     status = nao.runner.run(nao.sim.status())
     assert status.speech_recognition_source == "engine"
+
+
+GERMAN_TOPIC = """topic: ~naoqi_sim_test_reco_de()
+language: ged
+u:(hallo roboter) hallo mensch
+u:(wie spät ist es) zeit zum testen
+"""
+
+
+def robot_said(nao, text: str) -> np.ndarray:
+    """The robot's own speech of `text`, taken from the audio output and brought to 16 kHz mono:
+    a sentence in a language the tier has no recording for. It is preceded by 0.6 s of silence,
+    as a recording is: the module drops what it hears in the 0.35 s after it starts listening."""
+    after = time.monotonic()
+    nao.service("ALTextToSpeech").say(text)
+    speech = nao.sink.wait_for(lambda p: p.started_at >= after and p.stream == "speech")
+    samples = np.frombuffer(speech.pcm, dtype=np.int16).astype(np.float64)
+    samples = samples.reshape(-1, speech.channels).mean(axis=1)
+    n = int(len(samples) * 16000 / speech.rate)
+    resampled = np.interp(
+        np.linspace(0, len(samples) - 1, n), np.arange(len(samples)), samples
+    )
+    return np.concatenate([np.zeros(9600), resampled]).astype(np.int16)
+
+
+def test_a_sim_that_boots_in_german_speaks_hears_and_talks_german(nao, tmp_path: Path):
+    """A language beyond the images' English and French (asr-engine.md, "Models"): its voice and
+    its model fetched into the language packs volume on first use, the robot's language at boot,
+    a script's vocabulary heard, a German topic answered, though the suites carry no German
+    dialog data (speech-recognition.md, "Languages")."""
+    default = nao.sim
+    nao.stop()
+    nao.sim = NaoqiSim(
+        live_config(
+            nao.version.name,
+            robot=RobotSettings(
+                available_languages=("German", "English"), language="German"
+            ),
+        ),
+        sink=nao.sink,
+    )
+    try:
+        nao.start()
+        asr = nao.service("ALSpeechRecognition")
+        assert nao.service("ALTextToSpeech").getLanguage() == "German"
+        assert asr.getLanguage() == "German"
+        assert set(asr.getAvailableLanguages()) == {"German", "English"}
+        sentences = {
+            t: robot_said(nao, t) for t in ("hallo roboter", "wie spät ist es")
+        }
+        events = Events(nao.service("ALMemory"))
+
+        with listening(asr, ["hallo roboter", "wie spät ist es", "setz dich"]):
+            for text in sentences:
+                mark = events.mark()
+                say_to_the_robot(nao, sentences, text)
+                events.wait_word(mark)
+                assert [p for p, _ in events.words(mark)] == [text]
+
+        dialog = nao.service("ALDialog")
+        topic_file = tmp_path / "naoqi_sim_test_reco_de.top"
+        topic_file.write_text(GERMAN_TOPIC)
+        nao.container.copy_in(topic_file, "/tmp/naoqi_sim_test_reco_de.top")
+        dialog.setLanguage("German")
+        topic = dialog.loadTopic("/tmp/naoqi_sim_test_reco_de.top")
+        try:
+            dialog.activateTopic(topic)
+            dialog.subscribe(SUBSCRIBER)
+            try:
+                time.sleep(2.0)  # the dialog gives the recognition its phrases
+                mark = events.mark()
+                say_to_the_robot(nao, sentences, "hallo roboter")
+                events.wait(
+                    mark,
+                    lambda items: any(
+                        k == "Dialog/Answered" and v for _, k, v in items
+                    ),
+                    timeout=15,
+                    what="the answer",
+                )
+                assert "hallo roboter" in events.since(mark, "Dialog/LastInput")
+                assert events.since(mark, "Dialog/Answered")[-1] == "hallo mensch"
+            finally:
+                dialog.unsubscribe(SUBSCRIBER)
+                dialog.deactivateTopic(topic)
+        finally:
+            dialog.unloadTopic(topic)
+    finally:
+        nao.stop()
+        nao.sim = default  # the next test starts the default robot again

@@ -26,8 +26,23 @@ MAX_FPS = 30  # a NAO camera's highest frame rate
 
 # The language packs naoqi-sim has: a language a robot speaks, hears and talks in, with a voice in
 # the speech engine and a model in the speech recognition engine (docker/asr-engine/server.py,
-# `MODELS`; the fast tier checks them). What `robot.available_languages` may install.
-LANGUAGES = ("English", "French")
+# `MODELS`; the fast tier checks them), in the speech engine's order. What
+# `robot.available_languages` may install. Danish, Finnish and Norwegian have a voice only.
+LANGUAGES = (
+    "English",
+    "French",
+    "German",
+    "Dutch",
+    "Swedish",
+    "Spanish",
+    "Brazilian",
+    "Czech",
+    "Italian",
+    "Polish",
+    "Portuguese",
+    "Russian",
+    "Turkish",
+)
 
 # NAOqi's language names the speech engine has a voice for, in the engine's table order
 # (docker/tts-engine/server.py, `VOICES`; the fast tier checks the two lists agree)

@@ -1,18 +1,22 @@
 """The speech recognition engine's sessions and HTTP plumbing with a fake model and a scripted
 recogniser (no Vosk, no network), and the recipe's pins (specs/container/asr-engine.md)."""
 
+import hashlib
 import importlib.util
+import io
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
+import zipfile
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from naoqi_sim.config import LANGUAGES
+from naoqi_sim.config import LANGUAGES, SPEECH_LANGUAGES, RobotSettings
 
 _ENGINE = Path(__file__).resolve().parent.parent / "docker" / "asr-engine"
 
@@ -97,8 +101,143 @@ def _session(script, phrases=("hello robot", "what time is it"), spotting=False)
 
 
 def test_each_language_pack_has_a_recognition_model():
-    """The config's languages are the ones with a voice and a model: the engine has the models."""
+    """The config's languages are the ones with a voice and a model: the engine has the models
+    of exactly those (Danish, Finnish and Norwegian have a voice only), each hash-pinned."""
     assert tuple(server.MODELS) == LANGUAGES
+    assert set(LANGUAGES) == set(SPEECH_LANGUAGES) - {"Danish", "Finnish", "Norwegian"}
+    assert set(server.MODEL_SHA256) == set(server.MODELS.values())
+    assert (
+        server.MODELS["Portuguese"] == server.MODELS["Brazilian"]
+    )  # no model of its own
+    assert server.DEFAULT_LANGUAGES == RobotSettings().available_languages
+
+
+def test_the_installed_languages_are_named_once_each_and_need_a_model():
+    assert server.installed_languages("German, English ,German") == (
+        "German",
+        "English",
+    )
+    assert server.installed_languages("") == server.DEFAULT_LANGUAGES
+    with pytest.raises(ValueError, match="no model for Danish"):
+        server.installed_languages("English,Danish")
+
+
+# -- models: the image, the volume, a first use's download -------------------------
+
+
+@pytest.fixture
+def model_roots(tmp_path, monkeypatch):
+    """An image root and a volume root for the models, both empty."""
+    builtin, volume = tmp_path / "builtin", tmp_path / "volume"
+    monkeypatch.setattr(server, "BUILTIN_DIR", str(builtin))
+    monkeypatch.setattr(server, "MODEL_DIR", str(volume))
+    return builtin, volume
+
+
+def put_model(root: Path, name: str) -> Path:
+    (root / name / "conf").mkdir(parents=True)
+    return root / name
+
+
+def archive(name: str) -> bytes:
+    """A model's archive as the model site serves it: one folder named after the model."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as z:
+        z.writestr(f"{name}/conf/model.conf", "--min-active=200\n")
+        z.writestr(f"{name}/am/final.mdl", b"weights")
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def model_site(monkeypatch):
+    """A fake model site: the URLs fetched, each answered with the model's archive, whose hash
+    the engine is pinned to."""
+    urls: list[str] = []
+    archives: dict[str, bytes] = {}
+
+    def urlopen(url, timeout=0):
+        urls.append(url)
+        name = url.rsplit("/", 1)[1].removesuffix(".zip")
+        return io.BytesIO(archives.setdefault(name, archive(name)))
+
+    pins = {
+        name: hashlib.sha256(archive(name)).hexdigest() for name in server.MODEL_SHA256
+    }
+    monkeypatch.setattr(server, "MODEL_SHA256", pins)
+    monkeypatch.setattr(server.urllib.request, "urlopen", urlopen)
+    return urls, archives
+
+
+def test_a_model_in_the_image_is_never_fetched(model_roots, model_site):
+    builtin, _ = model_roots
+    path = put_model(builtin, server.MODELS["English"])
+    assert server.ensure_model("English") == str(path)
+    assert model_site[0] == []
+
+
+def test_a_model_the_volume_has_is_reused(model_roots, model_site):
+    _, volume = model_roots
+    path = put_model(volume, server.MODELS["German"])
+    assert server.ensure_model("German") == str(path)
+    assert model_site[0] == []
+
+
+def test_a_missing_model_is_fetched_into_the_volume_checked_and_unpacked(
+    model_roots, model_site
+):
+    _, volume = model_roots
+    name = server.MODELS["Spanish"]
+    path = server.ensure_model("Spanish")
+    assert model_site[0] == [f"https://alphacephei.com/vosk/models/{name}.zip"]
+    assert path == str(volume / name)
+    assert (volume / name / "am" / "final.mdl").read_bytes() == b"weights"
+    assert sorted(p.name for p in volume.iterdir()) == [
+        name
+    ]  # no archive, no temp folder
+    assert server.ensure_model("Spanish") == path and len(model_site[0]) == 1
+
+
+def test_a_model_with_the_wrong_hash_is_refused_and_leaves_nothing(
+    model_roots, model_site
+):
+    _, volume = model_roots
+    name = server.MODELS["Italian"]
+    model_site[1][name] = archive(name) + b"tampered"
+    with pytest.raises(ValueError, match=f"{name}.zip has SHA-256"):
+        server.ensure_model("Italian")
+    assert list(volume.iterdir()) == []
+
+
+def test_a_download_that_dies_leaves_no_half_model(model_roots, monkeypatch):
+    _, volume = model_roots
+
+    class Dies(io.BytesIO):
+        def read(self, size=-1, /):
+            raise OSError("connection reset")
+
+    monkeypatch.setattr(server.urllib.request, "urlopen", lambda url, timeout=0: Dies())
+    with pytest.raises(OSError):
+        server.ensure_model("Russian")
+    assert list(volume.iterdir()) == []
+
+
+def test_the_installed_languages_models_are_loaded_once_each(model_roots, model_site):
+    """Portuguese and Brazilian share one model, loaded once; English comes from the image."""
+    builtin, _ = model_roots
+    put_model(builtin, server.MODELS["English"])
+    loaded: list[str] = []
+
+    class Loaded:
+        def __init__(self, path):
+            loaded.append(Path(path).name)
+
+    models = server.load_models(("English", "Brazilian", "Portuguese"), Loaded)
+    assert list(models) == ["English", "Brazilian", "Portuguese"]
+    assert models["Brazilian"] is models["Portuguese"]
+    assert loaded == [server.MODELS["English"], server.MODELS["Brazilian"]]
+    assert model_site[0] == [
+        f"https://alphacephei.com/vosk/models/{server.MODELS['Brazilian']}.zip"
+    ]
 
 
 def test_phrases_are_normalised_and_those_with_unknown_words_dropped():
@@ -249,11 +388,22 @@ def _request(url, path, body=None, json_body=None):
 
 
 def test_health_is_503_until_the_models_are_loaded_then_names_the_languages(engine):
-    assert _request(engine, "/health") == (503, {"ok": False})
-    server.set_models({"English": FakeModel(WORDS), "French": FakeModel(WORDS)})
+    assert _request(engine, "/health") == (
+        503,
+        {"ok": False, "languages": list(server.LANGUAGES)},
+    )
+    server.set_models({"French": FakeModel(WORDS), "German": FakeModel(WORDS)})
     assert _request(engine, "/health") == (
         200,
-        {"ok": True, "recognizer": "vosk", "languages": ["English", "French"]},
+        {
+            "ok": True,
+            "recognizer": "vosk",
+            "languages": ["French", "German"],
+            "models": {
+                "French": "vosk-model-small-fr-0.22",
+                "German": "vosk-model-small-de-0.15",
+            },
+        },
     )
 
 
@@ -295,7 +445,7 @@ def test_a_new_start_forgets_the_previous_session(engine):
 @pytest.mark.parametrize(
     "path, body, json_body",
     [
-        ("/start", None, {"language": "German", "phrases": ["ja"]}),
+        ("/start", None, {"language": "Danish", "phrases": ["ja"]}),
         ("/start", None, {"language": "English", "phrases": "yes"}),
         ("/start", b"not json", None),
         ("/audio", b"\0\0\0", None),  # an odd length is not 16-bit samples
@@ -315,19 +465,29 @@ def test_a_start_before_the_models_are_loaded_is_503_and_unknown_paths_404(engin
     assert _request(engine, "/detect", b"")[0] == 404
 
 
-def test_the_recipe_pins_vosk_and_the_models_hashes_and_compose_checks_its_health():
+def test_the_recipe_bakes_the_default_languages_models_hash_checked():
     dockerfile = (_ENGINE / "Dockerfile").read_text()
     assert "vosk==0.3.45" in dockerfile
-    assert (
-        "30f26242c4eb449f948e42cb302dd7a686cb29a3423a8367f99ff41780942498" in dockerfile
-    )
-    assert (
-        "cabf6180e177eb9b3a9a9d43a437bd5e549f3a7d09525e5d69a3fed787be12ad" in dockerfile
-    )
     assert "sha256sum -c" in dockerfile
-    for name in server.MODELS.values():
-        assert name in dockerfile
+    baked = re.findall(r"ARG \w+_MODEL=(\S+)", dockerfile)
+    assert baked == [server.MODELS[lang] for lang in server.DEFAULT_LANGUAGES]
+    for name in baked:
+        assert server.MODEL_SHA256[name] in dockerfile
+    # the image's models where the server looks for them first
+    assert f"WORKDIR {server.BUILTIN_DIR}" in dockerfile
+
+
+def test_compose_gives_the_engine_the_languages_and_the_shared_language_packs_volume():
     compose = (_ENGINE.parent / "compose.yaml").read_text()
     section = compose[compose.index("  asr:") : compose.index("  naoqi21:")]
+    tts = compose[compose.index("  tts:") : compose.index("  perception:")]
     assert "naoqi-sim/asr:dev" in section and "/health" in section
+    assert "NAOQI_SIM_LANGUAGES: ${NAOQI_SIM_LANGUAGES:-English,French}" in section
+    # one volume for the voices and the models, at the root both engines' folders are under
+    assert "- language-packs:/language-packs" in section
+    assert "- language-packs:/language-packs" in tts
+    assert server.MODEL_DIR == "/language-packs/asr-models"
+    # one volume for both NAOqi versions: no per-version name
+    volumes = compose[compose.index("\nvolumes:") :]
+    assert "  language-packs:\n" in volumes and "name:" not in volumes
     assert compose.count("${NAOQI_SIM_ASR_URL-http://asr:8080}") == 2
